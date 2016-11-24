@@ -60,7 +60,7 @@ def CollideLineWidth(PtTest, Pt1, Pt2, Width):
     TheRect = None
     if Pt2[0] == Pt1[0]: TheRect = pygame.rect.Rect(Pt1[0] - Width, y1, Width * 2, y2 - y1)
     if Pt2[1] == Pt1[1]: TheRect = pygame.rect.Rect(x1, Pt1[1] - Width, x2 - x1, Width * 2)
-    if TheRect != None: return TheRect.collidepoint(PtTest)
+    if TheRect is not None: return TheRect.collidepoint(PtTest)
     Slope = float(Pt2[1] - Pt1[1]) / (Pt2[0] - Pt1[0])
     m = Slope + 1 / Slope
     b1 = Pt1[1] - Pt1[0] * Slope
@@ -74,7 +74,6 @@ def GetEuclidDist(Pt1, Pt2):
     return ((Pt1[0] - Pt2[0]) ** 2 + (Pt1[1] - Pt2[1]) ** 2) ** .5
 class Wire(PygCtl):
     def __init__(self, LstPts, Color, ActFunc = None):
-        global LstAct
         self.LstPts = list(LstPts)
         self.Color = Color
         self.Width = 1
@@ -84,7 +83,8 @@ class Wire(PygCtl):
         self.ActFunc = ActFunc
         self.TotRect = None
     def PreDraw(self, Surf):
-        if self.PrevLstPts != None: return [pygame.draw.lines(Surf, BKGR, False, self.PrevLstPts, self.PrevWidth)]
+        if self.PrevLstPts is not None:
+            return [pygame.draw.lines(Surf, BKGR, False, self.PrevLstPts, self.PrevWidth)]
         return []
     def Draw(self, Surf):
         if len(self.LstPts) < 2: return []
@@ -93,7 +93,7 @@ class Wire(PygCtl):
         self.TotRect = pygame.draw.lines(Surf, self.Color, False, self.LstPts, self.Width)
         return [self.TotRect]
     def DirtyRedraw(self, Surf, LstRects):
-        if self.TotRect != None and self.TotRect.collidelist(LstRects) == -1: return []
+        if self.TotRect is not None and self.TotRect.collidelist(LstRects) == -1: return []
         Rtn = []
         for c in xrange(len(self.LstPts) - 1):
             x1 = self.LstPts[c][0]
@@ -129,7 +129,7 @@ class Wire(PygCtl):
     def OnEvt(self, Evt, Pos):
         if Evt.type == pygame.MOUSEBUTTONDOWN and Evt.button == 1:
             Rtn = self.Cut(Pos)
-            if self.ActFunc != None: self.ActFunc()
+            if self.ActFunc is not None: self.ActFunc()
             return Rtn
         else: return False
     def Cut(self, Pt):
@@ -198,7 +198,7 @@ class Timer(PygCtl):
             if self.Sec <= 0:
                 self.Disp = [0,0,0]
                 pygame.time.set_timer(pygame.USEREVENT, 0)
-                if self.ActFunc != None: self.ActFunc()
+                if self.ActFunc is not None: self.ActFunc()
                 return True
             self.Disp[2] -= 1
             if self.Disp[2] < 0:
@@ -251,8 +251,8 @@ class Button(PygCtl):
     def OnKUp(self, Evt, Pos):
         return False
     def CollidePt(self, Pt):
-        return self.TotRect != None and self.TotRect.collidepoint(Pt)
-    def RecalcRect():
+        return self.TotRect is not None and self.TotRect.collidepoint(Pt)
+    def RecalcRect(self):
         pass
     def SetLbl(self, Lbl):
         global LstRedraw
@@ -281,7 +281,7 @@ class TogBtn(Button):
         self.CurSt += 1
         self.CurSt %= len(self.LstColors)
         CurAct = self.LstActions[self.CurSt]
-        if CurAct != None: CurAct(self, Evt.pos)
+        if CurAct is not None: CurAct(self, Evt.pos)
         return True
     def PreDraw(self, Surf):
         return [Surf.fill(BKGR, self.PrevRect)]
@@ -310,7 +310,7 @@ class PressBtn(Button):
         if Evt.button != 1: return False
         if not self.CurSt: return False
         self.CurSt = False
-        if self.ActFunc != None: self.ActFunc(self, Evt.pos)
+        if self.ActFunc is not None: self.ActFunc(self, Evt.pos)
         return True
     def OnEvtGlobal(self, Evt):
         if self.CurSt and Evt.type == pygame.MOUSEBUTTONUP and Evt.button == 1:
@@ -339,7 +339,7 @@ class TpsMon(PygCtl):
     def SetDisp(self, Set):
         self.IsDisp = Set
         if Set:
-            if self.Img == None: self.Img = self.Fnt.render(str(self.Tps), False, self.Color)
+            if self.Img is None: self.Img = self.Fnt.render(str(self.Tps), False, self.Color)
             self.PrevRect = pygame.rect.Rect((self.Pos[0] - self.Img.get_width(), self.Pos[1]), self.Img.get_size())
             SetRedraw(self)
         else: self.Img = None
@@ -351,7 +351,7 @@ class TpsMon(PygCtl):
                 SetRedraw(self)
             else: self.Img = None
     def PreDraw(self, Surf):
-        if self.PrevRect != None:
+        if self.PrevRect is not None:
             TheRect = self.PrevRect
             if not self.IsDisp: self.PrevRect = None
             return [Surf.fill(BKGR, TheRect)]
@@ -406,15 +406,15 @@ def RunCtls(IsContFunc = None):
     def CalcCollide(CurCtl):
         global LstCtl
         global CurPos
-        if CurCtl == None or not CurCtl.CollidePt(CurPos):
-            if CurCtl != None and CurCtl.OnMouseExit(): SetRedraw(CurCtl)
+        if CurCtl is None or not CurCtl.CollidePt(CurPos):
+            if CurCtl is not None and CurCtl.OnMouseExit(): SetRedraw(CurCtl)
             CurCtl = None
             for Ctl in LstCtl:
                 if Ctl.CollidePt(CurPos):
                     if Ctl.OnMouseEnter(): SetRedraw(Ctl)
                     CurCtl = Ctl
                     break
-        elif CurCtl != None:
+        elif CurCtl is not None:
             Pos = len(LstCtl)
             if CurCtl in LstCtl: Pos = LstCtl.index(CurCtl)
             for c in xrange(Pos):
@@ -430,7 +430,7 @@ def RunCtls(IsContFunc = None):
     for Ctl in LstCtl:
         Ctl.Draw(Surf)
     pygame.display.update()
-    while IsContFunc == None or IsContFunc():
+    while IsContFunc is None or IsContFunc():
         Evt = pygame.event.wait()
         BegTime = pygame.time.get_ticks()
         if Evt.type == pygame.VIDEORESIZE:
@@ -453,7 +453,7 @@ def RunCtls(IsContFunc = None):
             CtlEvtAllow = False
             if not DctEvtFunc[Evt.type](Evt): continue
         if CtlEvtAllow:
-            if CurCtl != None and CurCtl.OnEvt(Evt, CurPos): SetRedraw(CurCtl)
+            if CurCtl is not None and CurCtl.OnEvt(Evt, CurPos): SetRedraw(CurCtl)
             for Ctl in LstCtl:
                 if Ctl.OnEvtGlobal(Evt): SetRedraw(Ctl)
         if len(LstRedraw) == 0: continue
