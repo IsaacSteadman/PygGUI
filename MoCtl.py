@@ -245,7 +245,6 @@ def BinaryApprox(List, Val):
     Len = len(List)
     CurLen = Len
     Pos = Len >> 1
-    CurPos = Len >> 1
     while CurLen > 0:
         if Val <= List[Pos] and (Pos == 0 or Val >= List[Pos - 1]):
             return Pos
@@ -420,7 +419,7 @@ class EntryLine(PygCtl.PygCtl):
                 OffX = LstV[ChPos-1]
                 ChW = LstV[ChPos] - OffX
                 if Pos[0] - OffX <= CTH * ChW:ChPos -= 1
-            self.HiLtPos = ChPos
+            self.ChPos = ChPos
             return True
         elif Evt.type == pygame.KEYDOWN and self.IsSel:
             IsChg = False
