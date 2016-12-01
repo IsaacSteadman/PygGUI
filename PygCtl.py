@@ -395,6 +395,27 @@ def MappedCmp(x, y):
 DctEvtFunc = {}
 UsedTime = 0
 ChgdPos = False
+def CalcCollide(CurCtl, LstCtl, CurPos):
+    if CurCtl is None or not CurCtl.CollidePt(CurPos):
+        if CurCtl is not None and CurCtl.OnMouseExit(): SetRedraw(CurCtl)
+        CurCtl = None
+        for Ctl in LstCtl:
+            if Ctl.CollidePt(CurPos):
+                if Ctl.OnMouseEnter(): SetRedraw(Ctl)
+                CurCtl = Ctl
+                break
+    elif CurCtl is not None:
+        Pos = len(LstCtl)
+        if CurCtl in LstCtl: Pos = LstCtl.index(CurCtl)
+        for c in xrange(Pos):
+            Ctl = LstCtl[c]
+            if Ctl.CollidePt(CurPos):
+                if CurCtl.OnMouseExit(): SetRedraw(CurCtl)
+                if Ctl.OnMouseEnter(): SetRedraw(Ctl)
+                CurCtl = Ctl
+                break
+        if not CurCtl in LstCtl: CurCtl = None
+    return CurCtl
 def RunCtls(IsContFunc = None):
     global LstCtl
     global LstRedraw
@@ -403,29 +424,6 @@ def RunCtls(IsContFunc = None):
     global UsedTime
     global ChgdPos
     CurCtl = None
-    def CalcCollide(CurCtl):
-        global LstCtl
-        global CurPos
-        if CurCtl is None or not CurCtl.CollidePt(CurPos):
-            if CurCtl is not None and CurCtl.OnMouseExit(): SetRedraw(CurCtl)
-            CurCtl = None
-            for Ctl in LstCtl:
-                if Ctl.CollidePt(CurPos):
-                    if Ctl.OnMouseEnter(): SetRedraw(Ctl)
-                    CurCtl = Ctl
-                    break
-        elif CurCtl is not None:
-            Pos = len(LstCtl)
-            if CurCtl in LstCtl: Pos = LstCtl.index(CurCtl)
-            for c in xrange(Pos):
-                Ctl = LstCtl[c]
-                if Ctl.CollidePt(CurPos):
-                    if CurCtl.OnMouseExit(): SetRedraw(CurCtl)
-                    if Ctl.OnMouseEnter(): SetRedraw(Ctl)
-                    CurCtl = Ctl
-                    break
-            if not CurCtl in LstCtl: CurCtl = None
-        return CurCtl
     Surf.fill(BKGR)
     for Ctl in LstCtl:
         Ctl.Draw(Surf)
@@ -442,13 +440,14 @@ def RunCtls(IsContFunc = None):
             pygame.display.update()
             continue
         CtlEvtAllow = True
-        if Evt.type == pygame.QUIT: return -1
+        if Evt.type == pygame.QUIT:
+            return -1
         elif ChgdPos:
             ChgdPos = False
-            CurCtl = CalcCollide(CurCtl)
+            CurCtl = CalcCollide(CurCtl, LstCtl, CurPos)
         elif Evt.type == pygame.MOUSEMOTION:
             CurPos = Evt.pos
-            CurCtl = CalcCollide(CurCtl)
+            CurCtl = CalcCollide(CurCtl, LstCtl, CurPos)
         elif DctEvtFunc.has_key(Evt.type):
             CtlEvtAllow = False
             if not DctEvtFunc[Evt.type](Evt): continue
@@ -482,3 +481,84 @@ def RunCtls(IsContFunc = None):
         LstRedraw = []
         pygame.display.update(LstRects)
         UsedTime += pygame.time.get_ticks() - BegTime
+class WidgetGroup(object):
+    def __init__(self):
+        self.LstCtl = []
+        self.LstRedraw = []
+        self.CurCtl = None
+        self.CurPos = (0,0)
+        self.Surf = None
+        self.UsedTime = None
+        self.ChgdPos = False
+        self.UpdateFunc = pygame.display.update
+    def PygInit(self, Surf):
+        self.Surf = Surf
+    def ProcEvt(self, Evt):
+        Surf = self.Surf
+        CurPos = self.CurPos
+        CurCtl = self.CurCtl
+        LstCtl = self.LstCtl
+        LstRedraw = self.LstRedraw
+        ChgdPos = self.ChgdPos
+        UpdateFunc = self.UpdateFunc
+        UsedTime = self.UsedTime
+        try:
+            BegTime = pygame.time.get_ticks()
+            if Evt.type == pygame.VIDEORESIZE:
+                Surf = pygame.display.set_mode(Evt.size, pygame.RESIZABLE)
+                Surf.fill(BKGR)
+                for Ctl in LstCtl:
+                    Ctl.OnEvtGlobal(Evt)
+                    Ctl.Draw(Surf)
+                UpdateFunc()
+                return None
+            CtlEvtAllow = True
+            if Evt.type == pygame.QUIT:
+                return -1
+            elif ChgdPos:
+                ChgdPos = False
+                CurCtl = CalcCollide(CurCtl, LstCtl, CurPos)
+            elif Evt.type == pygame.MOUSEMOTION:
+                CurPos = Evt.pos
+                CurCtl = CalcCollide(CurCtl, LstCtl, CurPos)
+            elif DctEvtFunc.has_key(Evt.type):
+                CtlEvtAllow = False
+                if not DctEvtFunc[Evt.type](Evt): return None
+            if CtlEvtAllow:
+                if CurCtl is not None and CurCtl.OnEvt(Evt, CurPos): SetRedraw(CurCtl)
+                for Ctl in LstCtl:
+                    if Ctl.OnEvtGlobal(Evt): SetRedraw(Ctl)
+            if len(LstRedraw) == 0: return None
+            LstCurDraw = map(MapCtls, LstRedraw)
+            LstCurDraw.sort(MappedCmp)
+            LstRects = []
+            i = 0
+            while i < len(LstCurDraw):
+                if not isinstance(LstCurDraw[i], PygCtl): break
+                LstRects.extend(LstCurDraw[i].PreDraw(Surf))
+                i += 1
+            for c in xrange(i, len(LstCurDraw)):
+                Ctl = LstCtl[LstCurDraw[c]]
+                LstRects.extend(Ctl.PreDraw(Surf))
+            c = len(LstCtl)
+            MatchPos = i
+            LenCurDraw = len(LstCurDraw)
+            while c > 0:
+                c -= 1
+                Ctl = LstCtl[c]
+                if MatchPos < LenCurDraw and c == LstCurDraw[MatchPos]:
+                    MatchPos += 1
+                    LstRects.extend(Ctl.Draw(Surf))
+                else:
+                    LstRects.extend(Ctl.DirtyRedraw(Surf, LstRects))
+            LstRedraw = []
+            UpdateFunc(LstRects)
+            UsedTime += pygame.time.get_ticks() - BegTime
+        finally:
+            self.Surf = Surf
+            self.CurPos = CurPos
+            self.CurCtl = CurCtl
+            self.LstCtl = LstCtl
+            self.LstRedraw = LstRedraw
+            self.ChgdPos = ChgdPos
+            self.UsedTime = UsedTime
