@@ -753,19 +753,14 @@ class EntryBox(PygCtl.PygCtl):
                     return False
                 elif Evt.mod & pygame.KMOD_CTRL > 0:
                     Start = EntryLine.PrevWord(self.Txt.Str, ChPos)
-                    self.Txt.Delete(Start,ChPos)
                     Off = ChPos - Start
                     HiLtPos = self.Txt.RowColToPos(*self.HiLtPos)
-                    DoOff = 0  # Default make HiLtPos = ChPos
-                    if HiLtPos > ChPos:
-                        DoOff = 1  # Offset HiLtPos same amount as ChPos
-                    elif HiLtPos < self.ChPos - Start:
-                        DoOff = 2  # Leave HiLtPos Alone
-                    ChPos = Start
-                    if DoOff == 1:
+                    self.Txt.Delete(Start,ChPos)
+                    if HiLtPos >= ChPos:
                         HiLtPos -= Off
-                    elif DoOff == 0:
+                    elif HiLtPos > ChPos - Off:
                         HiLtPos = ChPos
+                    ChPos = Start
                     self.ChPos = self.Txt.PosToRowCol(ChPos)
                     self.HiLtPos = self.Txt.PosToRowCol(HiLtPos)
                     IsChg = True
@@ -786,11 +781,11 @@ class EntryBox(PygCtl.PygCtl):
                     return False
                 elif Evt.mod & pygame.KMOD_CTRL > 0:
                     End = EntryLine.NextWord(self.Txt.Str, ChPos)
-                    self.Txt.Delete(ChPos,End)
                     Off = End - ChPos
                     HiLtPos = self.Txt.RowColToPos(*self.HiLtPos)
+                    self.Txt.Delete(ChPos,End)
                     if HiLtPos > ChPos:
-                        self.HiLtPos = self.Txt.PosToRowCol(HiLtPos - Off)
+                        self.HiLtPos = self.Txt.PosToRowCol(max(HiLtPos - Off, ChPos))
                     IsChg = True
                 else:
                     if self.ChPos != self.HiLtPos:
@@ -802,7 +797,7 @@ class EntryBox(PygCtl.PygCtl):
                         if ChPos < len(self.Txt.Str):
                             self.Txt.Delete(ChPos, ChPos+1)
                             IsChg = True
-                self.HiLtPos = list(self.ChPos)
+                    self.HiLtPos = list(self.ChPos)
             elif Evt.key == pygame.K_HOME:
                 if Evt.mod & pygame.KMOD_CTRL > 0:
                     self.ChPos[1] = 0
@@ -993,7 +988,7 @@ class YGradient(Drawable):
         self.GradDir = True #False: up, True: down
         self.LstGrad = [0] * self.Size[1]
         InitGrad(self.LstGrad, StartColor, EndColor)
-        self.Img = pygame.surface.Surface(self.Size)
+        self.Img = pygame.Surface(self.Size)
         for y in xrange(self.Size[1]):
             self.Img.fill(self.LstGrad[y], pygame.rect.Rect((0, y), (self.Size[0], 1)))
     def Draw(self, Surf, Pos):
@@ -1182,7 +1177,7 @@ def Main3():
     if pygame.font.match_font(FntName) is None: FntName = "liberation sans"
     MyFnt = pygame.font.SysFont(FntName, 16)
     MyLine = EntryBox(
-        MyFnt, (25, 25), (200, MyFnt.size("M")[1]*10 + 4),
+        MyFnt, (25, 25), (200, MyFnt.get_linesize()*10 + 4),
         ((0, 0, 0),(128,192,192)), OnPreChg, OnPostChg, OnEnter,
         "BOMB you", OnCensor)
     PygCtl.LstCtl = [MyLine]
