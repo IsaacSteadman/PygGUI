@@ -226,7 +226,7 @@ class Label(PygCtl):
     def SetLbl(self, Lbl):
         self.Lbl = Lbl
         self.PrevRect = self.TotRect
-        self.TotRect = pygame.rect.Rect(Pos, Fnt.size(Lbl))
+        self.TotRect = pygame.rect.Rect(self.Pos, self.Fnt.size(Lbl))
         SetRedraw(self)
 class Button(PygCtl):
     def __init__(self, Lbl):
