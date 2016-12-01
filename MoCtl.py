@@ -811,7 +811,7 @@ class EntryBox(PygCtl.PygCtl):
             elif Evt.key == pygame.K_END:
                 if Evt.mod & pygame.KMOD_CTRL > 0:
                     self.ChPos[1] = len(self.Txt.Lines) - 1
-                self.ChPos[0] = self.Txt.GetRowLen(self.ChPos[1])
+                self.ChPos[0] = self.Txt.GetDrawRowLen(self.ChPos[1])
                 if Evt.mod & pygame.KMOD_SHIFT == 0: self.HiLtPos = list(self.ChPos)
             elif Evt.key == pygame.K_RETURN:
                 #if self.Enter is not None: self.Enter(self)
@@ -846,8 +846,8 @@ class EntryBox(PygCtl.PygCtl):
                     self.ChPos[0] = self.CursCol
                 else:
                     self.CursCol = self.ChPos[0]
-                if self.ChPos[0] > self.Txt.GetRowLen(self.ChPos[1]):
-                    self.ChPos[0] = self.Txt.GetRowLen(self.ChPos[1])
+                if self.ChPos[0] > self.Txt.GetDrawRowLen(self.ChPos[1]):
+                    self.ChPos[0] = self.Txt.GetDrawRowLen(self.ChPos[1])
                 if Evt.mod & pygame.KMOD_SHIFT == 0: self.HiLtPos = list(self.ChPos)
                 ColChg = False
             elif Evt.key == pygame.K_DOWN:
@@ -856,8 +856,8 @@ class EntryBox(PygCtl.PygCtl):
                     self.ChPos[0] = self.CursCol
                 else:
                     self.CursCol = self.ChPos[0]
-                if self.ChPos[0] >= self.Txt.GetRowLen(self.ChPos[1]):
-                    self.ChPos[0] = self.Txt.GetRowLen(self.ChPos[1])
+                if self.ChPos[0] > self.Txt.GetDrawRowLen(self.ChPos[1]):
+                    self.ChPos[0] = self.Txt.GetDrawRowLen(self.ChPos[1])
                 if Evt.mod & pygame.KMOD_SHIFT == 0: self.HiLtPos = list(self.ChPos)
                 ColChg = False
             elif Evt.mod & pygame.KMOD_CTRL > 0:

@@ -32,6 +32,10 @@ class TextLineView(object):
         if Row >= len(self.Lines):
             raise ValueError("Row too big")
         return (self.Lines[Row+1] if Row + 1 < len(self.Lines) else len(self.Str)) - self.Lines[Row]
+    def GetDrawRowLen(self, Row):
+        if Row >= len(self.Lines):
+            raise ValueError("Row too big")
+        return (self.Lines[Row+1]-len(self.LineSep) if Row + 1 < len(self.Lines) else len(self.Str)) - self.Lines[Row]
     def RowColToPos(self, Col, Row):
         if Col > self.GetRowLen(Row):
             raise ValueError("Column too big for row %u of length %u"%(Row,self.GetRowLen(Row)))
