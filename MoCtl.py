@@ -501,6 +501,7 @@ class EntryLine(PygCtl.PygCtl):
                             Data = pygame.scrap.get(Item)
                             if Data is not None:break
                     if Data == None or not self.OnPreChg(Evt): return False
+                    Data = Data.decode("utf-8")
                     self.Txt[Start:End] = Data
                     self.ChPos = Start + len(Data)
                     self.HiLtPos = self.ChPos
@@ -569,7 +570,39 @@ class EntryLine(PygCtl.PygCtl):
         return []
     def CollidePt(self, Pt):
         return self.CollRect.collidepoint(Pt)
-from TextUtils import TextLineView
+from TextUtils import TextLineView, ClipboardHandler
+class PygClipboard(ClipboardHandler):
+    def __init__(self):
+        pygame.scrap.init()
+    def put(self, typ, data):
+        Attrs = {"charset":"utf-16-le"}
+        for attr in typ.split(";")[1:]:
+            a = attr.split('=')
+            if len(a) != 2: continue
+            a, b = a
+            Attrs[a] = b
+        pygame.scrap.put(typ, data.encode(Attrs["charset"]))
+    def get(self, typ):
+        Attrs = {"charset":"utf-16-le"}
+        for attr in typ.split(";")[1:]:
+            a = attr.split('=')
+            if len(a) != 2: continue
+            a, b = a
+            Attrs[a] = b
+        return pygame.scrap.get(typ).decode(Attrs["charset"])
+class PyperClipboard(ClipboardHandler):
+    pyperclip = None
+    def __init__(self):
+        if self.pyperclip is None:
+            import pyperclip
+            self.pyperclip = pyperclip
+            PyperClipboard.pyperclip = pyperclip
+    def put(self, typ, data):
+        assert typ == "UTF8_STRING" or typ.startswith("text/plain"), "PyperClipboard only works with text"
+        self.pyperclip.copy(data)
+    def get(self, typ):
+        assert typ == "UTF8_STRING" or typ.startswith("text/plain"), "PyperClipboard only works with text"
+        return self.pyperclip.paste()
 class EntryBox(PygCtl.PygCtl):
     CursorTmr = pygame.USEREVENT + 1
     # Cursor Threshhold, the fraction of character width, height
@@ -654,12 +687,12 @@ class EntryBox(PygCtl.PygCtl):
     def InitTimer(cls, EvtCode=None):
         if EvtCode is not None: cls.CursorTmr = EvtCode
         pygame.time.set_timer(cls.CursorTmr, 500)
-        pygame.scrap.init()
+        cls.clipboard = PyperClipboard() # PygClipboard()
 
     def __init__(self, Fnt, Pos, Size, Colors, PreChg=None, PostChg=None, Enter=None, DefTxt="", Censor=None):
         self.LineSep = "\n"
         self.Colors = Colors
-        self.HltCol = [(255, 255, 255), (0, 0, 255)]
+        self.HltCol = [(255, 255, 255), (51, 143, 255)]
         self.Pos = Pos
         self.Size = Size
         self.PreChg = PreChg
@@ -860,19 +893,18 @@ class EntryBox(PygCtl.PygCtl):
                 if Evt.key == pygame.K_v:
                     Data = None
                     for Item in ClipBoardTypes:
-                        if Item in pygame.scrap.get_types():
-                            Data = pygame.scrap.get(Item)
-                            if Data is not None: break
+                        Data = self.clipboard.get(Item)
+                        if Data is not None: break
                     if Data is None or not self.OnPreChg(Evt): return False
                     self.Txt.Replace(Data,Start,End)
                     self.ChPos = self.Txt.PosToRowCol(Start + len(Data))
                     self.HiLtPos = list(self.ChPos)
                     IsChg = True
                 elif Evt.key == pygame.K_c:
-                    pygame.scrap.put(pygame.SCRAP_TEXT, self.Txt.GetStr(Start,End).encode("utf-8"))
+                    self.clipboard.put(pygame.SCRAP_TEXT, self.Txt.GetStr(Start,End))
                 elif Evt.key == pygame.K_x:
                     if Start == End or not self.OnPreChg(Evt): return False
-                    pygame.scrap.put(pygame.SCRAP_TEXT, self.Txt.GetStr(Start,End).encode("utf-8"))
+                    self.clipboard.put(pygame.SCRAP_TEXT, self.Txt.GetStr(Start,End))
                     self.Txt.Delete(Start,End)
                     self.ChPos = self.Txt.PosToRowCol(Start)
                     self.HiLtPos = self.Txt.PosToRowCol(Start)
@@ -950,6 +982,7 @@ class EntryBox(PygCtl.PygCtl):
         if self.CursorSt:
             c = self.ChPos[1]
             DrawTxt = self.Txt.GetDrawRow(c)
+            if self.Censor is not None: DrawTxt = self.Censor(DrawTxt)
             CursPos = (
                 self.Fnt.size(DrawTxt[:self.ChPos[0]])[0] + self.Pos[0] - 1,
                 self.Pos[1] + self.LineH * self.ChPos[1])
@@ -1163,6 +1196,7 @@ def Main3():
         for Word in BanWords:
             if Word in Txt:
                 print "found banned word: " + Word
+        if "clipboard" in Txt: print pygame.scrap.get_types()
     def OnEnter(Ln):
         DctShared["Done"] = True
     def OnCensor(DrawTxt):
@@ -1173,16 +1207,16 @@ def Main3():
             Pos, Len = FindLstWord(LowTxt, BanWords, Pos + 1)
         return DrawTxt
     IsDone = lambda: not DctShared["Done"]
-    FntName = "Courier New"
+    FntName = "Arial"
     if pygame.font.match_font(FntName) is None: FntName = "liberation sans"
     MyFnt = pygame.font.SysFont(FntName, 16)
     MyLine = EntryBox(
         MyFnt, (25, 25), (200, MyFnt.get_linesize()*10 + 4),
-        ((0, 0, 0),(128,192,192)), OnPreChg, OnPostChg, OnEnter,
+        ((0, 0, 0),(255,255,255)), OnPreChg, OnPostChg, OnEnter,
         "BOMB you", OnCensor)
     PygCtl.LstCtl = [MyLine]
     pygame.key.set_repeat(250, 1000/30)
-    EntryLine.InitTimer()
+    EntryBox.InitTimer()
     PygCtl.RunCtls(IsDone)
     pygame.quit()
 if __name__ == "__main__": Main3()

@@ -41,7 +41,6 @@ class TextLineView(object):
             raise ValueError("Column too big for row %u of length %u"%(Row,self.GetRowLen(Row)))
         return self.Lines[Row] + Col
     def tRowColToPos(self, ColRow):
-        print ColRow
         Col, Row = ColRow
         if Col > self.GetRowLen(Row):
             raise ValueError("Column too big for row %u of length %u"%(Row, self.GetRowLen(Row)))
@@ -81,6 +80,11 @@ class TextLineView(object):
         self.SetStr(u"".join(self.Str[:Pos0]) + u"".join(self.Str[Pos1:]))
     def GetStr(self, Pos0, Pos1):
         return u"".join(self.Str[Pos0:Pos1])
+class ClipboardHandler(object):
+    def put(self, typ, data):
+        pass
+    def get(self, typ):
+        pass
 if __name__ == "__main__":
     Lst = [0, 12, 23, 33]
     for c in xrange(Lst[-1] + 12):
