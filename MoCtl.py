@@ -1,6 +1,39 @@
 import PygCtl
 from PygCtl import pygame
 from ModuleHelper import *
+from TextUtils import TextLineView, ClipboardHandler
+class PygClipboard(ClipboardHandler):
+    def __init__(self):
+        pygame.scrap.init()
+    def put(self, typ, data):
+        Attrs = {"charset":"utf-16-le"}
+        for attr in typ.split(";")[1:]:
+            a = attr.split('=')
+            if len(a) != 2: continue
+            a, b = a
+            Attrs[a] = b
+        pygame.scrap.put(typ, data.encode(Attrs["charset"]))
+    def get(self, typ):
+        Attrs = {"charset":"utf-16-le"}
+        for attr in typ.split(";")[1:]:
+            a = attr.split('=')
+            if len(a) != 2: continue
+            a, b = a
+            Attrs[a] = b
+        return pygame.scrap.get(typ).decode(Attrs["charset"])
+class PyperClipboard(ClipboardHandler):
+    pyperclip = None
+    def __init__(self):
+        if self.pyperclip is None:
+            import pyperclip
+            self.pyperclip = pyperclip
+            PyperClipboard.pyperclip = pyperclip
+    def put(self, typ, data):
+        assert typ == "UTF8_STRING" or typ.startswith("text/plain"), "PyperClipboard only works with text"
+        self.pyperclip.copy(data)
+    def get(self, typ):
+        assert typ == "UTF8_STRING" or typ.startswith("text/plain"), "PyperClipboard only works with text"
+        return self.pyperclip.paste()
 #PygCtl = AttrWatcher(PygCtl)
 CacheImgs = False
 PygCtlAttrs = [
@@ -570,39 +603,6 @@ class EntryLine(PygCtl.PygCtl):
         return []
     def CollidePt(self, Pt):
         return self.CollRect.collidepoint(Pt)
-from TextUtils import TextLineView, ClipboardHandler
-class PygClipboard(ClipboardHandler):
-    def __init__(self):
-        pygame.scrap.init()
-    def put(self, typ, data):
-        Attrs = {"charset":"utf-16-le"}
-        for attr in typ.split(";")[1:]:
-            a = attr.split('=')
-            if len(a) != 2: continue
-            a, b = a
-            Attrs[a] = b
-        pygame.scrap.put(typ, data.encode(Attrs["charset"]))
-    def get(self, typ):
-        Attrs = {"charset":"utf-16-le"}
-        for attr in typ.split(";")[1:]:
-            a = attr.split('=')
-            if len(a) != 2: continue
-            a, b = a
-            Attrs[a] = b
-        return pygame.scrap.get(typ).decode(Attrs["charset"])
-class PyperClipboard(ClipboardHandler):
-    pyperclip = None
-    def __init__(self):
-        if self.pyperclip is None:
-            import pyperclip
-            self.pyperclip = pyperclip
-            PyperClipboard.pyperclip = pyperclip
-    def put(self, typ, data):
-        assert typ == "UTF8_STRING" or typ.startswith("text/plain"), "PyperClipboard only works with text"
-        self.pyperclip.copy(data)
-    def get(self, typ):
-        assert typ == "UTF8_STRING" or typ.startswith("text/plain"), "PyperClipboard only works with text"
-        return self.pyperclip.paste()
 class EntryBox(PygCtl.PygCtl):
     CursorTmr = pygame.USEREVENT + 1
     # Cursor Threshhold, the fraction of character width, height
