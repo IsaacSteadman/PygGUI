@@ -498,7 +498,7 @@ class EntryLine(PygCtl.PygCtl):
                     else:
                         self.Txt.pop(self.ChPos)
                     IsChg = True
-                self.HiLtPos = self.ChPos
+                    self.HiLtPos = self.ChPos
             elif Evt.key == pygame.K_HOME:
                 self.ChPos = 0
                 if Evt.mod & pygame.KMOD_SHIFT == 0:self.HiLtPos = self.ChPos
@@ -1219,4 +1219,4 @@ def Main3():
     EntryBox.InitTimer()
     PygCtl.RunCtls(IsDone)
     pygame.quit()
-if __name__ == "__main__": Main3()
+if __name__ == "__main__": Main1()
