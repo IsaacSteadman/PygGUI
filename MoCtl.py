@@ -66,7 +66,7 @@ class ListChild(PygCtl.PygCtl):
             PygCtl.LstCtl.insert(self.zIndex, self)
         PygCtl.SetRedraw(self)
     def Draw(self, Surf):
-        if self.IsShow and self.Pos != None:
+        if self.IsShow and self.Pos is not None:
             Img = self.Img
             if self.Img == None: Img = self.GetImg()
             if Img == None: return []
@@ -74,7 +74,7 @@ class ListChild(PygCtl.PygCtl):
             return [self.PrevRect]
         return []
     def PreDraw(self, Surf):
-        if self.PrevRect != None:
+        if self.PrevRect is not None:
             Rtn = Surf.fill(PygCtl.BKGR, self.PrevRect)
             self.PrevRect = None
             return [Rtn]
@@ -85,7 +85,7 @@ class ListChild(PygCtl.PygCtl):
         self.RelPos = Index - self.Parent.CurPos
         self.CollRect = pygame.rect.Rect(self.Pos, self.GetSize())
     def CollidePt(self, Pt):
-        return self.CollRect != None and self.CollRect.collidepoint(Pt)
+        return self.CollRect is not None and self.CollRect.collidepoint(Pt)
     def GetSize(self):
         try:
             return self.Img.get_size()
@@ -124,7 +124,7 @@ class ScrollBase(PygCtl.PygCtl):
         return 0
     def SetVisual(self, nDisp, Spacing = None):
         self.nDisp = nDisp
-        if Spacing != None: self.Spacing = Spacing
+        if Spacing is not None: self.Spacing = Spacing
         StartOff = (self.nDisp / 2) * self.Spacing
         self.xOffPos = self.GetElemXOff(StartOff - self.Center)
         MidOff = self.GetElemXOff(0)
@@ -133,7 +133,7 @@ class ScrollBase(PygCtl.PygCtl):
         self.CollRect = pygame.rect.Rect(self.RealPos[0], self.RealPos[1], self.Width + (MidOff - self.xOffPos), self.nDisp * self.Spacing)
         #print self.xOffPos, MidOff, self.Width
     def PreDraw(self, Surf):
-        if self.PrevRect != None:
+        if self.PrevRect is not None:
             Surf.fill(PygCtl.BKGR, self.PrevRect)
             Rtn = self.PrevRect
             self.PrevRect = None
@@ -204,8 +204,8 @@ class ClkLstElem(ListChild):
         self.SetLbl(Lbl, Color)
     def SetLbl(self, Lbl = None, Color = None):
         global CacheImgs
-        if Color != None: self.Color = Color
-        if Lbl != None: self.Lbl = Lbl
+        if Color is not None: self.Color = Color
+        if Lbl is not None: self.Lbl = Lbl
         if CacheImgs: self.Img = self.GetImg()
         if self in PygCtl.LstCtl: PygCtl.SetRedraw(self)
     def Click(self, Evt):
@@ -351,7 +351,7 @@ class EntryLine(PygCtl.PygCtl):
         return 0
     @classmethod
     def InitTimer(cls, EvtCode = None):
-        if EvtCode != None: cls.CursorTmr = EvtCode
+        if EvtCode is not None: cls.CursorTmr = EvtCode
         pygame.time.set_timer(cls.CursorTmr, 500)
         pygame.scrap.init()
     def __init__(self, Fnt, Pos, Size, Colors, PreChg=None, PostChg=None, Enter=None, DefTxt="", Censor=None):
@@ -395,7 +395,7 @@ class EntryLine(PygCtl.PygCtl):
             return True
         return False
     def OnPreChg(self, Evt):
-        return self.PreChg == None or self.PreChg(self, Evt)
+        return self.PreChg is None or self.PreChg(self, Evt)
     def OnEvtGlobal(self, Evt):
         if Evt.type == pygame.MOUSEBUTTONDOWN:
             if self.CollRect.collidepoint(Evt.pos): return False
@@ -500,7 +500,7 @@ class EntryLine(PygCtl.PygCtl):
                         if Item in pygame.scrap.get_types():
                             Data = pygame.scrap.get(Item)
                             if Data is not None:break
-                    if Data == None or not self.OnPreChg(Evt): return False
+                    if Data is None or not self.OnPreChg(Evt): return False
                     Data = Data.decode("utf-8")
                     self.Txt[Start:End] = Data
                     self.ChPos = Start + len(Data)
@@ -1051,7 +1051,7 @@ class GradBtn(PygCtl.PressBtn):
     def __init__(self, Lbl, ActFunc, Pos, Fnt, Padding = None, Colors = DefGradBtn):
         self.Pos = Pos
         self.ActFunc = ActFunc
-        if Padding == None: Padding = (2, 2)
+        if Padding is None: Padding = (2, 2)
         self.BoxSz = Colors["border"][0]
         self.BoxColor = Colors["border"][1]
         self.BoxColors = Colors["border"][1:3]
