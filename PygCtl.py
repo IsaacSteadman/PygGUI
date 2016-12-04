@@ -432,12 +432,15 @@ def RunCtls(IsContFunc = None):
         Evt = pygame.event.wait()
         BegTime = pygame.time.get_ticks()
         if Evt.type == pygame.VIDEORESIZE:
+            if DctEvtFunc.has_key(Evt.type):
+                DctEvtFunc[Evt.type](Evt)
             Surf = pygame.display.set_mode(Evt.size, pygame.RESIZABLE)
             Surf.fill(BKGR)
             for Ctl in LstCtl:
                 Ctl.OnEvtGlobal(Evt)
                 Ctl.Draw(Surf)
             pygame.display.update()
+            UsedTime += pygame.time.get_ticks() - BegTime
             continue
         CtlEvtAllow = True
         if Evt.type == pygame.QUIT:
