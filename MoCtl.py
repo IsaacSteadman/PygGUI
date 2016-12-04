@@ -386,7 +386,7 @@ class EntryLine(PygCtl.PygCtl):
     def InitTimer(cls, EvtCode = None):
         if EvtCode is not None: cls.CursorTmr = EvtCode
         pygame.time.set_timer(cls.CursorTmr, 500)
-        pygame.scrap.init()
+        cls.clipboard = PyperClipboard()
     def __init__(self, Fnt, Pos, Size, Colors, PreChg=None, PostChg=None, Enter=None, DefTxt="", Censor=None):
         self.Colors = Colors
         self.HltCol = [(255,255,255),(0,0,255)]
@@ -530,20 +530,18 @@ class EntryLine(PygCtl.PygCtl):
                 if Evt.key == pygame.K_v:
                     Data = None
                     for Item in ClipBoardTypes:
-                        if Item in pygame.scrap.get_types():
-                            Data = pygame.scrap.get(Item)
-                            if Data is not None:break
+                        Data = self.clipboard.get(Item)
+                        if Data is not None: break
                     if Data is None or not self.OnPreChg(Evt): return False
-                    Data = Data.decode("utf-8")
                     self.Txt[Start:End] = Data
                     self.ChPos = Start + len(Data)
                     self.HiLtPos = self.ChPos
                     IsChg = True
                 elif Evt.key == pygame.K_c:
-                    pygame.scrap.put(pygame.SCRAP_TEXT, bytes(u"".join(self.Txt[Start:End])))
+                    self.clipboard.put(pygame.SCRAP_TEXT, u"".join(self.Txt[Start:End]))
                 elif Evt.key == pygame.K_x:
                     if Start == End or not self.OnPreChg(Evt): return False
-                    pygame.scrap.put(pygame.SCRAP_TEXT, bytes(u"".join(self.Txt[Start:End])))
+                    self.clipboard.put(pygame.SCRAP_TEXT, u"".join(self.Txt[Start:End]))
                     self.Txt[Start:End] = []
                     self.ChPos = Start
                     self.HiLtPos = Start
@@ -713,6 +711,9 @@ class EntryBox(PygCtl.PygCtl):
         self.CursCol = None
         self.LineH = Fnt.get_linesize()
         self.OldCursor = None
+    def SetSize(self, Size):
+        self.Size = Size
+        self.CollRect = pygame.rect.Rect(self.Pos, self.Size)
     def OnEvt(self, Evt, Pos):
         if Evt.type == pygame.MOUSEBUTTONDOWN:
             self.HiLite = True
@@ -1219,4 +1220,39 @@ def Main3():
     EntryBox.InitTimer()
     PygCtl.RunCtls(IsDone)
     pygame.quit()
-if __name__ == "__main__": Main1()
+def Main4():
+    PygCtl.BKGR = (192, 192, 192)
+    PygCtl.Init()
+    FntName = "Arial"
+    if pygame.font.match_font(FntName) is None: FntName = "liberation sans"
+    MyFnt = pygame.font.SysFont(FntName, 16)
+    MyBox = EntryBox(
+        MyFnt, (20, 64), (600, MyFnt.get_linesize() * 20 + 4),
+        ((0, 0, 0), (255, 255, 255)))
+    MyLine = EntryLine(
+        MyFnt, (190, 25), (400, MyFnt.get_linesize() + 4),
+        ((0, 0, 0), (128, 192, 192)))
+    def Load(Btn, Pos):
+        fName = u"".join(MyLine.Txt)
+        with open(fName, "rb") as Fl:
+            MyBox.Txt.SetStr(Fl.read().decode("utf-8"), "\n")
+        MyBox.ChPos = [0,0]
+        MyBox.HiLtPos = [0,0]
+        PygCtl.SetRedraw(MyBox)
+    def Save(Btn, Pos):
+        fName = u"".join(MyLine.Txt)
+        with open(fName, "wb") as Fl:
+            Fl.write(MyBox.Txt.GetStr(0, len(MyBox.Txt.Str)).encode("utf-8"))
+    def OnResize(Evt):
+        MyBox.SetSize((Evt.size[0] - 40, MyBox.LineH*((Evt.size[1]-104)//MyBox.LineH)+4))
+    PygCtl.DctEvtFunc[pygame.VIDEORESIZE] = OnResize
+    LoadBtn = GradBtn("Load File", Load, (10, 25), MyFnt, (6, 2))
+    SaveBtn = GradBtn("Save File", Save, (100, 25), MyFnt, (6, 2))
+    PygCtl.LstCtl = [LoadBtn, SaveBtn, MyBox, MyLine]
+    pygame.key.set_repeat(250, 1000 / 30)
+    EntryBox.InitTimer()
+    EntryLine.InitTimer()
+    PygCtl.RunCtls()
+    pygame.quit()
+
+if __name__ == "__main__": Main4()
