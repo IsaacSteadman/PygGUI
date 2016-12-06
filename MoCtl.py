@@ -1220,22 +1220,41 @@ def Main3():
     EntryBox.InitTimer()
     PygCtl.RunCtls(IsDone)
     pygame.quit()
+class ErrLabel(PygCtl.Label):
+    def OnEvtGlobal(self, Evt):
+        if Evt.type == pygame.MOUSEBUTTONDOWN:
+            try:
+                PygCtl.LstCtl.remove(self)
+            except ValueError:
+                pass
+            return True
+        super(ErrLabel, self).OnEvtGlobal(Evt)
 def Main4():
     PygCtl.BKGR = (192, 192, 192)
     PygCtl.Init()
     FntName = "Arial"
     if pygame.font.match_font(FntName) is None: FntName = "liberation sans"
     MyFnt = pygame.font.SysFont(FntName, 16)
+    MyFnt1 = pygame.font.SysFont("Courier New", 16)
     MyBox = EntryBox(
-        MyFnt, (20, 64), (600, MyFnt.get_linesize() * 20 + 4),
+        MyFnt1, (20, 76), (600, MyFnt1.get_linesize() * 20 + 4),
         ((0, 0, 0), (255, 255, 255)))
     MyLine = EntryLine(
-        MyFnt, (190, 25), (400, MyFnt.get_linesize() + 4),
+        MyFnt1, (190, 25), (400, MyFnt1.get_linesize() + 4),
         ((0, 0, 0), (128, 192, 192)))
     def Load(Btn, Pos):
         fName = u"".join(MyLine.Txt)
-        with open(fName, "rb") as Fl:
-            MyBox.Txt.SetStr(Fl.read().decode("utf-8"), "\n")
+        try:
+            with open(fName, "rb") as Fl:
+                MyBox.Txt.SetStr(Fl.read().decode("utf-8"), "\n")
+        except IOError as Exc:
+            PygCtl.LstCtl.append(ErrLabel(str(Exc), (20,52), MyFnt1, (PygCtl.BKGR, PygCtl.RED)))
+            PygCtl.SetRedraw(PygCtl.LstCtl[-1])
+            return
+        except UnicodeDecodeError as Exc:
+            PygCtl.LstCtl.append(ErrLabel(str(Exc), (20,52), MyFnt1, (PygCtl.BKGR, PygCtl.RED)))
+            PygCtl.SetRedraw(PygCtl.LstCtl[-1])
+            return
         MyBox.ChPos = [0,0]
         MyBox.HiLtPos = [0,0]
         PygCtl.SetRedraw(MyBox)
