@@ -31,6 +31,15 @@ GFX_CMD_SUBSURF = 4
 GFX_CMD_GET_VAR = 5
 GFX_CMD_SET_VAR = 6
 GFX_CMD_MK_FNT = 7
+GFX_CMD_RECT = 8
+GFX_CMD_POLY = 9
+GFX_CMD_CIRCLE = 10
+GFX_CMD_ELLIPSE = 11
+GFX_CMD_ARC = 12
+GFX_CMD_LINE = 13
+GFX_CMD_LINES = 14
+GFX_CMD_AALINE = 15
+GFX_CMD_AALINES = 16
 GfxCmds = [
     None,
     GfxCmd(
@@ -54,6 +63,33 @@ GfxCmds = [
     GfxCmd(
         GFX_CMD_MK_FNT, ["Name", "Size", "Bold", "Italic"],
         lambda Name, Size, Bold, Italic: pygame.font.SysFont(Name, Size, Bold, Italic)),
+    GfxCmd(
+        GFX_CMD_RECT, ["Surface", "Color", "Rect", "Width"],
+        lambda Surface, Color, Rect, Width: pygame.draw.rect(Surface, Color, Rect, Width)),
+    GfxCmd(
+        GFX_CMD_POLY, ["Surface", "Color", "PointList", "Width"],
+        lambda Surface, Color, PointList, Width: pygame.draw.polygon(Surface, Color, PointList, Width)),
+    GfxCmd(
+        GFX_CMD_CIRCLE, ["Surface", "Color", "Pos", "Radius", "Width"],
+        lambda Surface, Color, Pos, Radius, Width: pygame.draw.circle(Surface, Color, Pos, Radius, Width)),
+    GfxCmd(
+        GFX_CMD_ELLIPSE, ["Surface", "Color", "Rect", "Width"],
+        lambda Surface, Color, Rect, Width: pygame.draw.ellipse(Surface, Color, Rect, Width)),
+    GfxCmd(
+        GFX_CMD_ARC, ["Surface", "Color", "Rect", "StartAngle", "StopAngle", "Width"],
+        lambda Surface, Color, Rect, StartAngle, StopAngle, Width: pygame.draw.arc(Surface, Color, Rect, StartAngle, StopAngle, Width)),
+    GfxCmd(
+        GFX_CMD_LINE, ["Surface", "Color", "StartPos", "EndPos", "Width"],
+        lambda Surface, Color, StartPos, EndPos, Width: pygame.draw.line(Surface, Color, StartPos, EndPos, Width)),
+    GfxCmd(
+        GFX_CMD_LINES, ["Surface", "Color", "Closed", "Pointlist", "Width"],
+        lambda Surface, Color, Closed, Pointlist, Width: pygame.draw.lines(Surface, Color, Closed, Pointlist, Width)),
+    GfxCmd(
+        GFX_CMD_AALINE, ["Surface", "Color", "StartPos", "EndPos", "Width"],
+        lambda Surface, Color, StartPos, EndPos, Width: pygame.draw.aaline(Surface, Color, StartPos, EndPos, Width)),
+    GfxCmd(
+        GFX_CMD_AALINES, ["Surface", "Color", "Closed", "Pointlist", "Width"],
+        lambda Surface, Color, Closed, Pointlist, Width: pygame.draw.aalines(Surface, Color, Closed, Pointlist, Width))
 ]
 class GfxCmdStack(object):
     def __init__(self, CmdList=None):
@@ -131,7 +167,17 @@ GfxCompilerCmdNames = {
     "subsurf":GFX_CMD_SUBSURF,
     "get":GFX_CMD_GET_VAR,
     "set":GFX_CMD_SET_VAR,
-    "makefont":GFX_CMD_MK_FNT}
+    "makefont":GFX_CMD_MK_FNT,
+    "rect":GFX_CMD_RECT,
+    "poly":GFX_CMD_POLY,
+    "circle":GFX_CMD_CIRCLE,
+    "ellipse":GFX_CMD_ELLIPSE,
+    "arc":GFX_CMD_ARC,
+    "line":GFX_CMD_LINE,
+    "lines":GFX_CMD_LINES,
+    "aaline":GFX_CMD_AALINE,
+    "aalines":GFX_CMD_AALINES
+}
 def GfxCompiler(Str):
     Rtn = GfxCmdStack()
     Tokens = ForthParse(Str)
