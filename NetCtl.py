@@ -56,7 +56,8 @@ GfxCmds = [
         lambda Name, Size, Bold, Italic: pygame.font.SysFont(Name, Size, Bold, Italic)),
 ]
 class GfxCmdStack(object):
-    def __init__(self):
+    def __init__(self, CmdList=None):
+        if CmdList is None: CmdList = []
         self.CmdList = []
     def Add(self, IsCmd, Data):
         if IsCmd:
@@ -144,6 +145,120 @@ def GfxCompiler(Str):
         else:
             Rtn.Add(False, eval(Tok))
     return Rtn
+class GfxEvent(object):
+    def __init__(self, Data, Global):
+        self.Data = Data
+        self.Global = Global
+    def SetRedraw(self, Obj):
+        self.Global.SetRedraw(Obj)
+class GfxChange(GfxEvent):
+    def __init__(self, Data, Global, DispList):
+        super(GfxChange, self).__init__(Data, Global)
+        self.DispList = DispList
+def LstRectUnion(Rects):
+    if len(Rects) == 0:
+        return None
+    else:
+        return Rects[0] if len(Rects) == 1 else Rects[0].unionall(Rects[1:])
+class GfxCtl(object):
+    def __init__(self, GfxObj=None, Context=None, PreGfxObj=None):
+        self.Context = {"BKGR":(0,0,0),"PrevRect":None}
+        if Context is not None: self.Context.update(Context)
+        self.PrevRect = self.Context["PrevRect"]
+        if PreGfxObj is None:
+            PreGfxObj = GfxCompiler(
+                """
+                "Surf" $get$
+                "BKGR" $get$
+                "PrevRect" $get$
+                0
+                $fill$
+                """
+            )
+        self.PreGfxObj = PreGfxObj
+        if GfxObj is None: GfxObj = GfxCmdStack()
+        self.GfxObj = GfxObj
+    def ChangePre(self, Evt):
+        self.PreGfxObj.CmdList = Evt.DispList
+        self.Context.update(Evt.Data)
+        return True
+    def Change(self, Evt):
+        self.GfxObj.CmdList = Evt.DispList
+        self.Context.update(Evt.Data)
+        return True
+    def Update(self, Evt):
+        self.Context.update(Evt.Data)
+        return True
+    def DirtyRedraw(self, LstRects): # returns bool
+        return self.PreDirty or self.PrevRect.collidelist(LstRects) != -1
+    def PreDirtyRedraw(self, LstRects): # returns bool
+        self.PreDirty = self.PrevRect.collidelist(LstRects) != -1
+        return self.PreDirty
+    def Draw(self):
+        Rects = self.GfxObj.Exec(self.Context)
+        self.PrevRect = self.Context["PrevRect"] = LstRectUnion(Rects)
+        return Rects
+    def PreDraw(self):
+        Rtn = []
+        if self.Context["PrevRect"] is not None:
+            Rtn = self.PreGfxObj.Exec(self.Context)
+            self.PrevRect = self.Context["PrevRect"] = None
+        return Rtn
+
+def MappedCmp(x, y):
+    if isinstance(x, GfxCtl):
+        return -1
+    elif isinstance(y, GfxCtl):
+        return 1
+    else:
+        return cmp(y, x)
+class GfxGlobal(object):
+    def __init__(self):
+        self.LstCtl = []
+        self.LstRedraw = set()
+    def MapCtls(self, Item):
+        try:
+            return self.LstCtl.index(Item)
+        except ValueError:
+            return Item
+    def SetRedraw(self, Obj):
+        self.LstRedraw.add(Obj)
+    def DoDraw(self, Surf):
+        LstCurDraw = map(self.MapCtls, self.LstRedraw)
+        LstCurDraw.sort(MappedCmp)
+        LstRects = []
+        i = 0
+        while i < len(LstCurDraw) and isinstance(LstCurDraw[i], GfxCtl):
+            Ctl = LstCurDraw[i]
+            Ctl.Context["Surf"] = Surf
+            LstRects.extend(Ctl.PreDraw())
+            del Ctl.Context["Surf"]
+            i += 1
+        c = len(self.LstCtl)
+        MatchPos = i
+        LenCurDraw = len(LstCurDraw)
+        while c > 0:
+            c -= 1
+            Ctl = self.LstCtl[c]
+            Ctl.Context["Surf"] = Surf
+            if MatchPos < LenCurDraw and c == LstCurDraw[MatchPos]:
+                MatchPos += 1
+                LstRects.extend(Ctl.PreDraw())
+            elif Ctl.PreDirtyRedraw(LstRects):
+                LstRects.extend(Ctl.PreDraw())
+        c = len(self.LstCtl)
+        MatchPos = i
+        while c > 0:
+            c -= 1
+            Ctl = self.LstCtl[c]
+            if MatchPos < LenCurDraw and c == LstCurDraw[MatchPos]:
+                MatchPos += 1
+                LstRects.extend(Ctl.Draw())
+            elif Ctl.DirtyRedraw(LstRects):
+                LstRects.extend(Ctl.Draw())
+            del Ctl.Context["Surf"]
+        self.LstRedraw = set()
+        return LstRects
 def Main():
     Init = GfxCompiler(
     """
@@ -158,7 +273,7 @@ def Main():
     Draw1 = GfxCompiler(
         """
         "Surf" $get$
-        (0,0,0) None 0 $fill$ $pop$
+        (0,0,0) None 0 $fill$
         "Surf" $get$
         "MyFnt" $get$
         "Hello World" 0 (255, 0, 255) None $text$
@@ -166,7 +281,7 @@ def Main():
     Draw2 = GfxCompiler(
         """
         "Surf" $get$
-        (64,128,255) None 0 $fill$ $pop$
+        (64,128,255) None 0 $fill$
         "Surf" $get$
         "MyFnt" $get$
         "Hello World" 0 (0, 255, 255) None $text$
@@ -176,12 +291,78 @@ def Main():
         if Evt.type == pygame.QUIT: break
         elif Evt.type == pygame.KEYDOWN:
             if Evt.key == pygame.K_1:
-                Draw1.Exec(Context)
-                pygame.display.update()
+                pygame.display.update(Draw1.Exec(Context))
             elif Evt.key == pygame.K_2:
-                Draw2.Exec(Context)
-                pygame.display.update()
+                pygame.display.update(Draw2.Exec(Context))
+
+    pygame.quit()
+def Main1():
+    Init = GfxCompiler(
+        """
+        "Courier New" 16 0 0 $makefont$
+        "MyFnt" $set$
+        """)
+    Context = {}
+    pygame.display.init()
+    pygame.font.init()
+    Context["Surf"] = pygame.display.set_mode((640, 480))
+    Init.Exec(Context)
+    Draw = GfxCompiler(
+        """
+        "Surf" $get$
+        "MyFnt" $get$
+        "Hello World" 0 (255, 0, 255) (0, 192, 255) $text$
+        "Pos" $get$ None 0 $blit$""")
+    Draw1 = GfxCompiler(
+        """
+        "Surf" $get$
+        "MyFnt" $get$
+        "Hello World" 0 (255, 0, 255) None $text$
+        (200, 200) None 0 $blit$""")
+    Draw2 = GfxCompiler(
+        """
+        "Surf" $get$
+        "MyFnt" $get$
+        "Hello World" 0 (0, 255, 255) None $text$
+        (400, 200) None 0 $blit$""")
+    Inst = GfxGlobal()
+    Inst.LstCtl.append(GfxCtl(Draw, {"MyFnt":Context["MyFnt"],"Pos":(200, 200)}))
+    Inst.LstCtl.append(GfxCtl(Draw, {"MyFnt":Context["MyFnt"],"Pos":(400, 200)}))
+    Inst.LstRedraw = set(Inst.LstCtl)
+    Ctl0Dct = {
+        pygame.K_w: lambda x, y: (x, y - 1),
+        pygame.K_a: lambda x, y: (x - 1, y),
+        pygame.K_s: lambda x, y: (x, y + 1),
+        pygame.K_d: lambda x, y: (x + 1, y),
+    }
+    Ctl1Dct = {
+        pygame.K_UP: lambda x, y: (x, y - 1),
+        pygame.K_LEFT: lambda x, y: (x - 1, y),
+        pygame.K_DOWN: lambda x, y: (x, y + 1),
+        pygame.K_RIGHT: lambda x, y: (x + 1, y),
+    }
+    while True:
+        Evt = pygame.event.wait()
+        if Evt.type == pygame.QUIT:
+            break
+        elif Evt.type == pygame.KEYDOWN:
+            if Evt.key in Ctl0Dct:
+                Ctl = Inst.LstCtl[0]
+                assert isinstance(Ctl, GfxCtl)
+                Pos = Ctl.Context["Pos"]
+                Pos = Ctl0Dct[Evt.key](*Pos)
+                if Ctl.Update(GfxEvent({"Pos":Pos}, Inst)):
+                    Inst.SetRedraw(Ctl)
+            elif Evt.key in Ctl1Dct:
+                Ctl = Inst.LstCtl[1]
+                assert isinstance(Ctl, GfxCtl)
+                Pos = Ctl.Context["Pos"]
+                Pos = Ctl1Dct[Evt.key](*Pos)
+                if Ctl.Update(GfxEvent({"Pos":Pos}, Inst)):
+                    Inst.SetRedraw(Ctl)
+        if len(Inst.LstRedraw) > 0:
+            pygame.display.update(Inst.DoDraw(Context["Surf"]))
     pygame.quit()
 
 
-if __name__ == "__main__": Main()
+if __name__ == "__main__": Main1()
