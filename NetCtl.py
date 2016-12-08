@@ -1,4 +1,6 @@
 import pygame
+
+GfxCmdNames = []
 class GfxCmd(object):
     def __init__(self, CmdId, Args, Func, IsSpecial=False):
         self.CmdId = CmdId
@@ -22,7 +24,7 @@ class GfxCmd(object):
         try:
             return self.Func(*CallArgs)
         except StandardError as Exc:
-            raise StandardError(Exc, ("CmdId = %u"%self.CmdId,))
+            raise StandardError(Exc, ("CmdId = %s"%GfxCmdNames[self.CmdId],))
 class StackGfxCmd(GfxCmd):
     def __init__(self, CmdId, StackChk, Func, StackChkArgs=()):
         super(StackGfxCmd, self).__init__(CmdId, [], Func)
@@ -33,7 +35,7 @@ class StackGfxCmd(GfxCmd):
     def __call__(self, Stack):
         Chk = self.StackChk(Stack, *self.StackChkArgs)
         if Chk is not None:
-            raise ValueError(Chk + "(CmdId = %u)"%self.CmdId)
+            raise ValueError(Chk + "(CmdId = %s)"%GfxCmdNames[self.CmdId])
         return self.Func(Stack)
 def CheckSzStack(Stack, Sz=1):
     if len(Stack) < Sz:
@@ -42,27 +44,41 @@ def SwapList(Lst, i0, i1):
     Tmp = Lst[i0]
     Lst[i0] = Lst[i1]
     Lst[i1] = Tmp
-GFX_CMD_DISCARD = 0
-GFX_CMD_COPY = 1
-GFX_CMD_SWAP = 2
-GFX_CMD_FILL = 3
-GFX_CMD_BLIT = 4
-GFX_CMD_TEXT = 5
-GFX_CMD_SUBSURF = 6
-GFX_CMD_GET_VAR = 7
-GFX_CMD_SET_VAR = 8
-GFX_CMD_MK_FNT = 9
-GFX_CMD_RECT = 10
-GFX_CMD_POLY = 11
-GFX_CMD_CIRCLE = 12
-GFX_CMD_ELLIPSE = 13
-GFX_CMD_ARC = 14
-GFX_CMD_LINE = 15
-GFX_CMD_LINES = 16
-GFX_CMD_AALINE = 17
-GFX_CMD_AALINES = 18
-GFX_CMD_SIZE = 19
-GFX_CMD_MK_RECT = 20
+class ListFiller(object):
+    def __init__(self, Len, Lst=None):
+        self.Len = Len
+        if Lst is None: Lst = []
+        Lst[:] = [None] * Len
+        self.Lst = Lst
+        self.NextPos = 0
+    def Alloc(self, Obj):
+        Rtn = self.NextPos
+        self.NextPos += 1
+        self.Lst[Rtn] = Obj
+        return Rtn
+GfxCmdAlloc = ListFiller(21, GfxCmdNames)
+GFX_CMD_DISCARD = GfxCmdAlloc.Alloc("GFX_CMD_DISCARD")
+GFX_CMD_COPY = GfxCmdAlloc.Alloc("GFX_CMD_COPY")
+GFX_CMD_SWAP = GfxCmdAlloc.Alloc("GFX_CMD_SWAP")
+EndStackCmds = GFX_CMD_SWAP
+GFX_CMD_FILL = GfxCmdAlloc.Alloc("GFX_CMD_FILL")
+GFX_CMD_BLIT = GfxCmdAlloc.Alloc("GFX_CMD_BLIT")
+GFX_CMD_TEXT = GfxCmdAlloc.Alloc("GFX_CMD_TEXT")
+GFX_CMD_SUBSURF = GfxCmdAlloc.Alloc("GFX_CMD_SUBSURF")
+GFX_CMD_GET_VAR = GfxCmdAlloc.Alloc("GFX_CMD_GET_VAR")
+GFX_CMD_SET_VAR = GfxCmdAlloc.Alloc("GFX_CMD_SET_VAR")
+GFX_CMD_MK_FNT = GfxCmdAlloc.Alloc("GFX_CMD_MK_FNT")
+GFX_CMD_RECT = GfxCmdAlloc.Alloc("GFX_CMD_RECT")
+GFX_CMD_POLY = GfxCmdAlloc.Alloc("GFX_CMD_POLY")
+GFX_CMD_CIRCLE = GfxCmdAlloc.Alloc("GFX_CMD_CIRCLE")
+GFX_CMD_ELLIPSE = GfxCmdAlloc.Alloc("GFX_CMD_ELLIPSE")
+GFX_CMD_ARC = GfxCmdAlloc.Alloc("GFX_CMD_ARC")
+GFX_CMD_LINE = GfxCmdAlloc.Alloc("GFX_CMD_LINE")
+GFX_CMD_LINES = GfxCmdAlloc.Alloc("GFX_CMD_LINES")
+GFX_CMD_AALINE = GfxCmdAlloc.Alloc("GFX_CMD_AALINE")
+GFX_CMD_AALINES = GfxCmdAlloc.Alloc("GFX_CMD_AALINES")
+GFX_CMD_SIZE = GfxCmdAlloc.Alloc("GFX_CMD_SIZE")
+GFX_CMD_MK_RECT = GfxCmdAlloc.Alloc("GFX_CMD_MK_RECT")
 GfxCmds = [
     StackGfxCmd(
         GFX_CMD_DISCARD, CheckSzStack,
@@ -142,7 +158,7 @@ class GfxCmdStack(object):
         Stack = []
         for IsCmd, Data in self.CmdList:
             if IsCmd:
-                if Data < 3:
+                if Data <= EndStackCmds:
                     GfxCmds[Data](Stack)
                     continue
                 CurCmd = GfxCmds[Data]
@@ -152,7 +168,7 @@ class GfxCmdStack(object):
                     Args.insert(0, Context)
                     NumArgs -= 1
                 if len(Stack) < NumArgs:
-                    raise TypeError("Insufficient Stack size to pass to command %u"%Data)
+                    raise TypeError("Insufficient Stack size to pass to command %u (%s)"%(Data, GfxCmdNames[Data]))
                 Args += Stack[-NumArgs:]
                 Stack = Stack[:-NumArgs]
                 Rtn = CurCmd(*Args)
@@ -404,18 +420,6 @@ def Main1():
         $copy$ $copy$ $size$ (0,0) $swap$ $mkrect$
         (255, 64, 0) $swap$ 2 $ellipse$ $pop$
         "Pos" $get$ None 0 $blit$""")
-    Draw1 = GfxCompiler(
-        """
-        "Surf" $get$
-        "MyFnt" $get$
-        "Hello World" 0 (255, 0, 255) None $text$
-        (200, 200) None 0 $blit$""")
-    Draw2 = GfxCompiler(
-        """
-        "Surf" $get$
-        "MyFnt" $get$
-        "Hello World" 0 (0, 255, 255) None $text$
-        (400, 200) None 0 $blit$""")
     Inst = GfxGlobal()
     Inst.LstCtl.append(GfxCtl(Draw, {"MyFnt":Context["MyFnt"],"Pos":(200, 200)}))
     Inst.LstCtl.append(GfxCtl(Draw, {"MyFnt":Context["MyFnt"],"Pos":(400, 200)}))
