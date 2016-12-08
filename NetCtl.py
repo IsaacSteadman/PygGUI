@@ -23,25 +23,56 @@ class GfxCmd(object):
             return self.Func(*CallArgs)
         except StandardError as Exc:
             raise StandardError(Exc, ("CmdId = %u"%self.CmdId,))
+class StackGfxCmd(GfxCmd):
+    def __init__(self, CmdId, StackChk, Func, StackChkArgs=()):
+        super(StackGfxCmd, self).__init__(CmdId, [], Func)
+        self.CmdId = CmdId
+        self.StackChk = StackChk
+        self.Func = Func
+        self.StackChkArgs = StackChkArgs
+    def __call__(self, Stack):
+        Chk = self.StackChk(Stack, *self.StackChkArgs)
+        if Chk is not None:
+            raise ValueError(Chk + "(CmdId = %u)"%self.CmdId)
+        return self.Func(Stack)
+def CheckSzStack(Stack, Sz=1):
+    if len(Stack) < Sz:
+        return "Not enough args on stack"
+def SwapList(Lst, i0, i1):
+    Tmp = Lst[i0]
+    Lst[i0] = Lst[i1]
+    Lst[i1] = Tmp
 GFX_CMD_DISCARD = 0
-GFX_CMD_FILL = 1
-GFX_CMD_BLIT = 2
-GFX_CMD_TEXT = 3
-GFX_CMD_SUBSURF = 4
-GFX_CMD_GET_VAR = 5
-GFX_CMD_SET_VAR = 6
-GFX_CMD_MK_FNT = 7
-GFX_CMD_RECT = 8
-GFX_CMD_POLY = 9
-GFX_CMD_CIRCLE = 10
-GFX_CMD_ELLIPSE = 11
-GFX_CMD_ARC = 12
-GFX_CMD_LINE = 13
-GFX_CMD_LINES = 14
-GFX_CMD_AALINE = 15
-GFX_CMD_AALINES = 16
+GFX_CMD_COPY = 1
+GFX_CMD_SWAP = 2
+GFX_CMD_FILL = 3
+GFX_CMD_BLIT = 4
+GFX_CMD_TEXT = 5
+GFX_CMD_SUBSURF = 6
+GFX_CMD_GET_VAR = 7
+GFX_CMD_SET_VAR = 8
+GFX_CMD_MK_FNT = 9
+GFX_CMD_RECT = 10
+GFX_CMD_POLY = 11
+GFX_CMD_CIRCLE = 12
+GFX_CMD_ELLIPSE = 13
+GFX_CMD_ARC = 14
+GFX_CMD_LINE = 15
+GFX_CMD_LINES = 16
+GFX_CMD_AALINE = 17
+GFX_CMD_AALINES = 18
+GFX_CMD_SIZE = 19
+GFX_CMD_MK_RECT = 20
 GfxCmds = [
-    None,
+    StackGfxCmd(
+        GFX_CMD_DISCARD, CheckSzStack,
+        lambda Stack: Stack.pop()),
+    StackGfxCmd(
+        GFX_CMD_COPY, CheckSzStack,
+        lambda Stack: Stack.append(Stack[-1])),
+    StackGfxCmd(
+        GFX_CMD_SWAP, CheckSzStack,
+        lambda Stack: SwapList(Stack, -1, -2), (2,)),
     GfxCmd(
         GFX_CMD_FILL, ["Tgt", "Color", "Rect", "SpecialFlags"],
         lambda Tgt, Color, Rect, SpecialFlags: Tgt.fill(Color, Rect, SpecialFlags)),
@@ -89,8 +120,16 @@ GfxCmds = [
         lambda Surface, Color, StartPos, EndPos, Width: pygame.draw.aaline(Surface, Color, StartPos, EndPos, Width)),
     GfxCmd(
         GFX_CMD_AALINES, ["Surface", "Color", "Closed", "Pointlist", "Width"],
-        lambda Surface, Color, Closed, Pointlist, Width: pygame.draw.aalines(Surface, Color, Closed, Pointlist, Width))
+        lambda Surface, Color, Closed, Pointlist, Width: pygame.draw.aalines(Surface, Color, Closed, Pointlist, Width)),
+    GfxCmd(
+        GFX_CMD_SIZE, ["Surface"],
+        lambda Surface: Surface.get_size()),
+    GfxCmd(
+        GFX_CMD_MK_RECT, ["Pos", "Size"],
+        lambda Pos, Size: pygame.Rect(Pos, Size))
 ]
+for c in xrange(len(GfxCmds)):
+    assert GfxCmds[c].CmdId == c, "Error: CmdId=%u;c=%u, CmdId does not match up with index" % (GfxCmds[c].CmdId, c)
 class GfxCmdStack(object):
     def __init__(self, CmdList=None):
         if CmdList is None: CmdList = []
@@ -103,8 +142,8 @@ class GfxCmdStack(object):
         Stack = []
         for IsCmd, Data in self.CmdList:
             if IsCmd:
-                if Data == 0:
-                    Stack.pop()
+                if Data < 3:
+                    GfxCmds[Data](Stack)
                     continue
                 CurCmd = GfxCmds[Data]
                 NumArgs = len(CurCmd.Args)
@@ -161,6 +200,8 @@ def ForthParse(Str):
     return filter(len, Tokens)
 GfxCompilerCmdNames = {
     "pop":GFX_CMD_DISCARD,
+    "copy":GFX_CMD_COPY,
+    "swap":GFX_CMD_SWAP,
     "fill":GFX_CMD_FILL,
     "blit":GFX_CMD_BLIT,
     "text":GFX_CMD_TEXT,
@@ -176,7 +217,9 @@ GfxCompilerCmdNames = {
     "line":GFX_CMD_LINE,
     "lines":GFX_CMD_LINES,
     "aaline":GFX_CMD_AALINE,
-    "aalines":GFX_CMD_AALINES
+    "aalines":GFX_CMD_AALINES,
+    "size":GFX_CMD_SIZE,
+    "mkrect":GFX_CMD_MK_RECT
 }
 def GfxCompiler(Str):
     Rtn = GfxCmdStack()
@@ -357,7 +400,9 @@ def Main1():
         """
         "Surf" $get$
         "MyFnt" $get$
-        "Hello World" 0 (255, 0, 255) (0, 192, 255) $text$
+        "Hello World" 0 (255, 0, 255) (0, 191, 255) $text$
+        $copy$ $copy$ $size$ (0,0) $swap$ $mkrect$
+        (255, 64, 0) $swap$ 2 $ellipse$ $pop$
         "Pos" $get$ None 0 $blit$""")
     Draw1 = GfxCompiler(
         """
