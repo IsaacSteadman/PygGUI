@@ -60,7 +60,7 @@ GfxCmdAlloc = ListFiller(21, GfxCmdNames)
 GFX_CMD_DISCARD = GfxCmdAlloc.Alloc("GFX_CMD_DISCARD")
 GFX_CMD_COPY = GfxCmdAlloc.Alloc("GFX_CMD_COPY")
 GFX_CMD_SWAP = GfxCmdAlloc.Alloc("GFX_CMD_SWAP")
-EndStackCmds = GFX_CMD_SWAP
+EndStackCmds = GfxCmdAlloc.NextPos
 GFX_CMD_FILL = GfxCmdAlloc.Alloc("GFX_CMD_FILL")
 GFX_CMD_BLIT = GfxCmdAlloc.Alloc("GFX_CMD_BLIT")
 GFX_CMD_TEXT = GfxCmdAlloc.Alloc("GFX_CMD_TEXT")
@@ -158,7 +158,7 @@ class GfxCmdStack(object):
         Stack = []
         for IsCmd, Data in self.CmdList:
             if IsCmd:
-                if Data <= EndStackCmds:
+                if Data < EndStackCmds:
                     GfxCmds[Data](Stack)
                     continue
                 CurCmd = GfxCmds[Data]
