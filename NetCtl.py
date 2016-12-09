@@ -7,6 +7,7 @@ class GfxCmd(object):
         self.Args = Args
         self.Func = Func
         self.IsSpecial = IsSpecial
+        self.ResCmdPtr = False
     def __call__(self, *args, **kwargs):
         if len(args) != len(self.Args):
             raise TypeError("%s.__init__ called with %u arguments in addition to self (expected %u) ID:%u" % (
@@ -26,17 +27,26 @@ class GfxCmd(object):
         except StandardError as Exc:
             raise StandardError(Exc, ("CmdId = %s"%GfxCmdNames[self.CmdId],))
 class StackGfxCmd(GfxCmd):
-    def __init__(self, CmdId, StackChk, Func, StackChkArgs=()):
+    def __init__(self, CmdId, StackChk, Func, StackChkArgs=(), ResCmdPtr=False):
         super(StackGfxCmd, self).__init__(CmdId, [], Func)
         self.CmdId = CmdId
         self.StackChk = StackChk
         self.Func = Func
         self.StackChkArgs = StackChkArgs
-    def __call__(self, Stack):
+        self.ResCmdPtr = ResCmdPtr
+    def __call__(self, Stack, CmdPtr):
         Chk = self.StackChk(Stack, *self.StackChkArgs)
         if Chk is not None:
             raise ValueError(Chk + "(CmdId = %s)"%GfxCmdNames[self.CmdId])
         return self.Func(Stack)
+class ComplexGfxCmd(StackGfxCmd):
+    def __init__(self, CmdId, StackChk, Func, StackChkArgs=(), ResCmdPtr=True):
+        super(ComplexGfxCmd, self).__init__(CmdId, StackChk, Func, StackChkArgs, ResCmdPtr)
+    def __call__(self, Stack, CmdPtr):
+        Chk = self.StackChk(Stack, *self.StackChkArgs)
+        if Chk is not None:
+            raise ValueError(Chk + "(CmdId = %s)"%GfxCmdNames[self.CmdId])
+        return self.Func(Stack, CmdPtr)
 def CheckSzStack(Stack, Sz=1):
     if len(Stack) < Sz:
         return "Not enough args on stack"
@@ -56,10 +66,12 @@ class ListFiller(object):
         self.NextPos += 1
         self.Lst[Rtn] = Obj
         return Rtn
-GfxCmdAlloc = ListFiller(21, GfxCmdNames)
+GfxCmdAlloc = ListFiller(23, GfxCmdNames)
 GFX_CMD_DISCARD = GfxCmdAlloc.Alloc("GFX_CMD_DISCARD")
 GFX_CMD_COPY = GfxCmdAlloc.Alloc("GFX_CMD_COPY")
 GFX_CMD_SWAP = GfxCmdAlloc.Alloc("GFX_CMD_SWAP")
+GFX_CMD_JMP = GfxCmdAlloc.Alloc("GFX_CMD_JMP")
+GFX_CMD_JMPIF = GfxCmdAlloc.Alloc("GFX_CMD_JMPIF")
 EndStackCmds = GfxCmdAlloc.NextPos
 GFX_CMD_FILL = GfxCmdAlloc.Alloc("GFX_CMD_FILL")
 GFX_CMD_BLIT = GfxCmdAlloc.Alloc("GFX_CMD_BLIT")
@@ -89,6 +101,12 @@ GfxCmds = [
     StackGfxCmd(
         GFX_CMD_SWAP, CheckSzStack,
         lambda Stack: SwapList(Stack, -1, -2), (2,)),
+    ComplexGfxCmd(
+        GFX_CMD_JMP, CheckSzStack,
+        lambda Stack, CmdPtr: Stack.pop()),
+    ComplexGfxCmd(
+        GFX_CMD_JMPIF, CheckSzStack,
+        lambda Stack, CmdPtr: (Stack.pop(), CmdPtr+1)[bool(Stack.pop())], (2,)),
     GfxCmd(
         GFX_CMD_FILL, ["Tgt", "Color", "Rect", "SpecialFlags"],
         lambda Tgt, Color, Rect, SpecialFlags: Tgt.fill(Color, Rect, SpecialFlags)),
@@ -149,19 +167,23 @@ for c in xrange(len(GfxCmds)):
 class GfxCmdStack(object):
     def __init__(self, CmdList=None):
         if CmdList is None: CmdList = []
-        self.CmdList = []
+        self.CmdList = CmdList
     def Add(self, IsCmd, Data):
         if IsCmd:
             assert isinstance(Data, (int, long)) and 0 <= Data < len(GfxCmds)
         self.CmdList.append((IsCmd, Data))
     def Exec(self, Context):
         Stack = []
-        for IsCmd, Data in self.CmdList:
+        CmdPtr = 0
+        while CmdPtr < len(self.CmdList):
+            IsCmd, Data = self.CmdList[CmdPtr]
             if IsCmd:
-                if Data < EndStackCmds:
-                    GfxCmds[Data](Stack)
-                    continue
                 CurCmd = GfxCmds[Data]
+                if Data < EndStackCmds:
+                    Res = CurCmd(Stack, CmdPtr)
+                    if CurCmd.ResCmdPtr: CmdPtr = Res
+                    else: CmdPtr += 1
+                    continue
                 NumArgs = len(CurCmd.Args)
                 Args = []
                 if CurCmd.IsSpecial:
@@ -175,6 +197,7 @@ class GfxCmdStack(object):
                 Stack.append(Rtn)
             else:
                 Stack.append(Data)
+            CmdPtr += 1
         return Stack
 def ForthParse(Str):
     Tokens = [""]
@@ -218,6 +241,8 @@ GfxCompilerCmdNames = {
     "pop":GFX_CMD_DISCARD,
     "copy":GFX_CMD_COPY,
     "swap":GFX_CMD_SWAP,
+    "jmp":GFX_CMD_JMP,
+    "jmpif":GFX_CMD_JMPIF,
     "fill":GFX_CMD_FILL,
     "blit":GFX_CMD_BLIT,
     "text":GFX_CMD_TEXT,
