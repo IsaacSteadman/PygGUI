@@ -106,7 +106,7 @@ GfxCmds = [
         lambda Stack, CmdPtr: Stack.pop()),
     ComplexGfxCmd(
         GFX_CMD_JMPIF, CheckSzStack,
-        lambda Stack, CmdPtr: (Stack.pop(), CmdPtr+1)[bool(Stack.pop())], (2,)),
+        lambda Stack, CmdPtr: (CmdPtr+1, Stack.pop())[bool(Stack.pop())], (2,)),
     GfxCmd(
         GFX_CMD_FILL, ["Tgt", "Color", "Rect", "SpecialFlags"],
         lambda Tgt, Color, Rect, SpecialFlags: Tgt.fill(Color, Rect, SpecialFlags)),
@@ -441,7 +441,7 @@ def Main1():
         """
         "Surf" $get$
         "MyFnt" $get$
-        "Hello World" 0 (255, 0, 255) (0, 191, 255) $text$
+        "Hello World" 0 (255, 0, 255) (0, 191, 255) $text$ 0 23 $jmpif$
         $copy$ $copy$ $size$ (0,0) $swap$ $mkrect$
         (255, 64, 0) $swap$ 2 $ellipse$ $pop$
         "Pos" $get$ None 0 $blit$""")
