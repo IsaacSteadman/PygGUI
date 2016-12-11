@@ -66,12 +66,14 @@ class ListFiller(object):
         self.NextPos += 1
         self.Lst[Rtn] = Obj
         return Rtn
-GfxCmdAlloc = ListFiller(23, GfxCmdNames)
+GfxCmdAlloc = ListFiller(25, GfxCmdNames)
 GFX_CMD_DISCARD = GfxCmdAlloc.Alloc("GFX_CMD_DISCARD")
 GFX_CMD_COPY = GfxCmdAlloc.Alloc("GFX_CMD_COPY")
 GFX_CMD_SWAP = GfxCmdAlloc.Alloc("GFX_CMD_SWAP")
 GFX_CMD_JMP = GfxCmdAlloc.Alloc("GFX_CMD_JMP")
 GFX_CMD_JMPIF = GfxCmdAlloc.Alloc("GFX_CMD_JMPIF")
+GFX_CMD_RJMP = GfxCmdAlloc.Alloc("GFX_CMD_RJMP")
+GFX_CMD_RJMPIF = GfxCmdAlloc.Alloc("GFX_CMD_RJMPIF")
 EndStackCmds = GfxCmdAlloc.NextPos
 GFX_CMD_FILL = GfxCmdAlloc.Alloc("GFX_CMD_FILL")
 GFX_CMD_BLIT = GfxCmdAlloc.Alloc("GFX_CMD_BLIT")
@@ -107,6 +109,12 @@ GfxCmds = [
     ComplexGfxCmd(
         GFX_CMD_JMPIF, CheckSzStack,
         lambda Stack, CmdPtr: (CmdPtr+1, Stack.pop())[bool(Stack.pop())], (2,)),
+    ComplexGfxCmd(
+        GFX_CMD_RJMP, CheckSzStack,
+        lambda Stack, CmdPtr: CmdPtr+Stack.pop()),
+    ComplexGfxCmd(
+        GFX_CMD_RJMPIF, CheckSzStack,
+        lambda Stack, CmdPtr: (CmdPtr+(1,Stack.pop())[bool(Stack.pop())]), (2,)),
     GfxCmd(
         GFX_CMD_FILL, ["Tgt", "Color", "Rect", "SpecialFlags"],
         lambda Tgt, Color, Rect, SpecialFlags: Tgt.fill(Color, Rect, SpecialFlags)),
@@ -243,6 +251,8 @@ GfxCompilerCmdNames = {
     "swap":GFX_CMD_SWAP,
     "jmp":GFX_CMD_JMP,
     "jmpif":GFX_CMD_JMPIF,
+    "rjmp":GFX_CMD_RJMP,
+    "rjmpif":GFX_CMD_RJMPIF,
     "fill":GFX_CMD_FILL,
     "blit":GFX_CMD_BLIT,
     "text":GFX_CMD_TEXT,
@@ -441,7 +451,7 @@ def Main1():
         """
         "Surf" $get$
         "MyFnt" $get$
-        "Hello World" 0 (255, 0, 255) (0, 191, 255) $text$ 0 23 $jmpif$
+        "Hello World" 0 (255, 0, 255) (0, 191, 255) $text$ 1 23-11 $rjmpif$
         $copy$ $copy$ $size$ (0,0) $swap$ $mkrect$
         (255, 64, 0) $swap$ 2 $ellipse$ $pop$
         "Pos" $get$ None 0 $blit$""")
