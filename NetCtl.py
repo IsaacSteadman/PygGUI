@@ -1,4 +1,9 @@
 import pygame
+from InetProt import DataPacker
+from InetProt import DATA_BYTES_LEFT, DATA_BYTES, DATA_VAR_BYTES, DATA_INT
+from InetProt import DATA_COND_FMT, DATA_ARRAY, DATA_LONG, DATA_OBJ, DATA_VAR_FMT
+from InetProt import DataObj,DataLong,DataInt,DataBytes,\
+    DataVarBytes,DataArray,DataBytesLeft,DataCondFmt,DataVarFmt
 
 GfxCmdNames = []
 class GfxCmd(object):
@@ -172,7 +177,153 @@ GfxCmds = [
 ]
 for c in xrange(len(GfxCmds)):
     assert GfxCmds[c].CmdId == c, "Error: CmdId=%u;c=%u, CmdId does not match up with index" % (GfxCmds[c].CmdId, c)
+
+TypeDescFn = lambda PrevData: TypeDescLst[PrevData]
+TypeDescLst = map(DataPacker.ProcExtType, [
+    DataInt(1),#Null (But which type?; 0:None, 1:[])
+    DataInt(1),# unsigned
+    DataInt(1),# signed
+    DataInt(2),# unsigned
+    DataInt(2),# signed
+    DataInt(4),# unsigned
+    DataInt(4),# signed
+    DataInt(8),# unsigned
+    DataInt(8),# signed
+    DataLong(2, 1),
+    DataVarBytes(4),
+    DataVarBytes(4),
+    DataObj(
+        DataInt(1),
+        DataVarFmt(lambda PrevData: DataArray(TypeDescFn(PrevData), 4, 1)))])
+
+def GetBestType(Data):
+    if Data is None:
+        return 0
+    elif isinstance(Data, (long, int)):
+        BitLen = Data.bit_length()
+        Type = 1
+        if Data < 0:
+            BitLen = abs(Data + 1).bit_length() + 1
+            Type += 1
+        NumBytes = (BitLen + 7) / 8
+        if NumBytes > 8:
+            Type = 9
+        elif NumBytes > 4:
+            Type += 6
+        elif NumBytes > 2:
+            Type += 4
+        elif NumBytes > 1:
+            Type += 2
+        return Type
+    elif isinstance(Data, basestring):
+        Type = 10
+        if isinstance(Data, unicode):
+            Type += 1
+        return Type
+    elif isinstance(Data, list):
+        if len(Data) == 0:
+            return 0
+        else:
+            return 12, max(map(GetBestType, Data))
+    raise TypeError("Unrecognized or unsupported type: '%s'"%type(Data).__name__)
+def EncodeAsType(Data, OpCode, InclOpCode=True):
+    Rtn = None.__class__
+    if OpCode == 0:
+        if Data is None:
+            Rtn = 0
+        elif isinstance(Data, list) and len(Data) == 0:
+            Rtn = 1
+        else:
+            raise TypeError("Unrecognized Null Type value %s" % repr(Data))
+    elif 1 <= OpCode <= 9:
+        assert isinstance(Data, (long, int))
+        if OpCode == 9: Rtn = Data
+        Type = OpCode
+        Type -= 1
+        if Data >= 0 or Type % 2 == 0:
+            Rtn = Data
+        else:
+            Type /= 2
+            Mask = 1 << (2 ** (Type+3))
+            Data += Mask
+            Rtn = Data
+    elif OpCode == 10:
+        assert isinstance(Data, basestring)
+        Rtn = Data
+    elif OpCode == 11:
+        assert isinstance(Data, unicode)
+        Rtn = Data.encode("utf-8")
+    elif isinstance(OpCode, tuple):
+        if OpCode[0] == 12:
+            Rtn = map(lambda x: EncodeAsType(x, OpCode[1], False), Data)
+            if InclOpCode:
+                OpCodes = [OpCode]
+                c = 0
+                while c < len(OpCodes):
+                    if isinstance(OpCodes[c], tuple):
+                        OpCodes[c:c+1] = OpCodes[c]
+                    else:
+                        c += 1
+                for OpCode in OpCodes[::-1]:
+                    Rtn = [OpCode, Rtn]
+            return Rtn
+        else:
+            raise TypeError("Unrecognized multi-OpCode")
+    if Rtn is None.__class__:
+        raise TypeError("Unrecognized OpCode TypeID %s" % repr(OpCode))
+    if InclOpCode:
+        return [OpCode, Rtn]
+    else:
+        return Rtn
+def TypeEncoder(Data):
+    return EncodeAsType(Data, GetBestType(Data))
+def TypeDecoder(Data):
+    OpCode, Data = Data
+    if isinstance(OpCode, list) and len(OpCode) == 1:
+        OpCode = OpCode[0]
+    Same = lambda x: x
+    Rtn = None.__class__
+    if OpCode == 12:
+        OpCodes = [OpCode]
+        while OpCode == 12:
+            OpCode, Data = Data
+            OpCodes.append(OpCode)
+        Rtn = TypeDecoder([OpCodes, Data])
+    elif isinstance(OpCode, list):
+        Rtn = map(lambda x: TypeDecoder([OpCode[1:], x]), Data)
+    elif 0 <= OpCode <= 11:
+        Rtn = {
+            0:lambda x:[None, list()][x],
+            1: Same,
+            2:lambda x: x if x < 0x80 else (x-0x100),
+            3: Same,
+            4: lambda x: x if x < 0x8000 else (x - 0x10000),
+            5: Same,
+            6: lambda x: x if x < 0x80000000 else (x - 0x100000000),
+            7: Same,
+            8: lambda x: x if x < 0x8000000000000000 else (x - 0x10000000000000000),
+            9: Same,
+            10:Same,
+            11:lambda x: x.decode("utf-8"),
+        }[OpCode](Data)
+    return Rtn
 class GfxCmdStack(object):
+    Serializer = DataPacker(
+        DataArray(
+            DataObj(
+                DataInt(1),
+                DataCondFmt(
+                    lambda PrevData: int(bool(PrevData&0x80)),
+                    DataVarFmt(TypeDescFn),
+                    DataObj()))))
+    @classmethod
+    def Unserialize(cls, Data):
+        LstData = cls.Serializer.Unpack(Data)[0]
+        for c in xrange(len(LstData)):
+            OpCode, Data = LstData[c]
+            IsCmd = bool(OpCode & 0x80)
+            LstData[c] = (IsCmd, OpCode & 0x7F if IsCmd else TypeDecoder([OpCode, Data]))
+        return GfxCmdStack(LstData)
     def __init__(self, CmdList=None):
         if CmdList is None: CmdList = []
         self.CmdList = CmdList
@@ -180,6 +331,13 @@ class GfxCmdStack(object):
         if IsCmd:
             assert isinstance(Data, (int, long)) and 0 <= Data < len(GfxCmds)
         self.CmdList.append((IsCmd, Data))
+
+    def Serialize(self, Fl=None):
+        LstData = [
+            ([Data | 0x80, []] if IsCmd else TypeEncoder(Data))
+            for IsCmd, Data in self.CmdList]
+        return self.Serializer.Pack([LstData],Fl)
+
     def Exec(self, Context):
         Stack = []
         CmdPtr = 0
@@ -285,6 +443,19 @@ def GfxCompiler(Str):
         else:
             Rtn.Add(False, eval(Tok))
     return Rtn
+GfxDecompilerCmdNames = {GfxCompilerCmdNames[k]:k for k in GfxCompilerCmdNames}
+def GfxDecompiler(CmdStack):
+    assert isinstance(CmdStack, GfxCmdStack)
+    Tokens = []
+    for IsCmd, Data in CmdStack.CmdList:
+        if IsCmd:
+            Tokens.append("$%s$"%GfxDecompilerCmdNames[Data])
+        else:
+            Str = repr(Data)
+            if len(ForthParse(Str)) > 1:
+                Str = "(%s)" % Str
+            Tokens.append(Str)
+    return " ".join(Tokens)
 class GfxEvent(object):
     def __init__(self, Data, Global):
         self.Data = Data
@@ -495,4 +666,4 @@ def Main1():
     pygame.quit()
 
 
-if __name__ == "__main__": Main1()
+#if __name__ == "__main__": Main1()
