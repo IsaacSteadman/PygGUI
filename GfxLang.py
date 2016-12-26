@@ -242,7 +242,30 @@ TypeDescLst = map(DataPacker.ProcExtType, [
     DataObj( # array/tuple
         DataInt(1),
         DataVarFmt(lambda PrevData: DataArray(TypeDescFn(PrevData), 4, 1)))])
-
+def DeepGetSign(Data):
+    if isinstance(Data, (long, int)):
+        return Data < 0
+    elif isinstance(Data, (tuple, list)):
+        for x in Data:
+            if DeepGetSign(x): return True
+    return False
+def GetBestOfTypes(Data, CurBest, Sign):
+    if isinstance(CurBest, tuple):
+        return CurBest[0], max(map(lambda x: GetBestOfTypes(x, CurBest[1], Sign), Data))
+    if 1 <= CurBest <= 8:
+        CurBest -= 1
+        CurBest -= CurBest % 2
+        NumBytes = [1, 2, 4, 8][CurBest/2]
+        if Sign:
+            CurBest += 1
+            if Data < 0:
+                if abs(Data) > 2 ** (NumBytes * 8-1):
+                    CurBest += 2
+            else:
+                if Data >= 2 ** (NumBytes * 8 - 1):
+                    CurBest += 2
+        return min(CurBest+1,9)
+    return CurBest
 def GetBestType(Data):
     if Data is None:
         return 0
@@ -271,12 +294,16 @@ def GetBestType(Data):
         if len(Data) == 0:
             return 0
         else:
-            return 12, max(map(GetBestType, Data))
+            CurBest = 12, max(map(GetBestType, Data))
+            Sign = DeepGetSign(Data)
+            return GetBestOfTypes(Data, CurBest, Sign)
     elif isinstance(Data, tuple):
         if len(Data) == 0:
             return 0
         else:
-            return 13, max(map(GetBestType, Data))
+            CurBest = 13, max(map(GetBestType, Data))
+            Sign = DeepGetSign(Data)
+            return GetBestOfTypes(Data, CurBest, Sign)
     raise TypeError("Unrecognized or unsupported type: '%s'"%type(Data).__name__)
 def EncodeAsType(Data, OpCode, InclOpCode=True):
     Rtn = None.__class__
