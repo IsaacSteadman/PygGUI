@@ -210,12 +210,20 @@ class Timer(PygCtl):
             return True
         return False
 class Label(PygCtl):
-    def __init__(self, Lbl, Pos, Fnt, TxtColor = (BKGR, WHITE)):
+    #Centered
+    #  0: not centered
+    #  1: x centered
+    #  2: y centered
+    #  3: x and y centered
+    def __init__(self, Lbl, Pos, Fnt, TxtColor = (BKGR, WHITE), Centered=0):
         self.Lbl = Lbl
         self.Fnt = Fnt
         self.Pos = Pos
         self.Color = TxtColor
-        self.TotRect = pygame.rect.Rect(Pos, Fnt.size(Lbl))
+        self.Centered = Centered
+        self.TotRect = CalcCenter(
+            Fnt.size(Lbl), self.Pos,
+            bool(self.Centered&1), bool(self.Centered&2))
         self.PrevRect = self.TotRect
     def CollidePt(self, Pos):
         return self.TotRect.collidepoint(Pos)
@@ -223,10 +231,21 @@ class Label(PygCtl):
         return [Surf.fill(BKGR, self.PrevRect)]
     def Draw(self, Surf):
         return [Surf.blit(self.Fnt.render(self.Lbl, 0, self.Color[1], self.Color[0]), self.Pos)]
-    def SetLbl(self, Lbl):
-        self.Lbl = Lbl
+    def SetLbl(self, Lbl=None, Color=None, Pos=None, Centered=None):
+        NoChg = 0
+        if Lbl != None: self.Lbl = Lbl
+        else:NoChg += 1
+        if Color != None: self.Color = Color
+        else:NoChg += 1
+        if Pos != None: self.Pos = Pos
+        else:NoChg += 1
+        if Centered != None: self.Centered = Centered
+        else:NoChg += 1
+        if NoChg >= 4:return
         self.PrevRect = self.TotRect
-        self.TotRect = pygame.rect.Rect(self.Pos, self.Fnt.size(Lbl))
+        self.TotRect = CalcCenter(
+            self.Fnt.size(self.Lbl), self.Pos,
+            bool(self.Centered&1), bool(self.Centered&2))
         SetRedraw(self)
 class Button(PygCtl):
     def __init__(self, Lbl):
