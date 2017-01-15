@@ -209,6 +209,10 @@ class Timer(PygCtl):
                     self.Disp[1] += 60
             return True
         return False
+def CalcCenter(Sz, Pos, CenterW = False, CenterH = False):
+    PosX = Pos[0] - (int(Sz[0] / 2) if CenterW else 0)
+    PosY = Pos[1] - (int(Sz[1] / 2) if CenterH else 0)
+    return pygame.rect.Rect((PosX, PosY), Sz)
 class Label(PygCtl):
     #Centered
     #  0: not centered
