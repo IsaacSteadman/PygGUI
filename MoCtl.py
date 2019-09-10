@@ -101,8 +101,10 @@ class ListChild(PygCtl.PygCtl):
     def Draw(self, Surf):
         if self.IsShow and self.Pos is not None:
             Img = self.Img
-            if self.Img == None: Img = self.GetImg()
-            if Img == None: return []
+            if Img is None: Img = self.GetImg()
+            if CacheImgs: self.Img = Img
+            else: self.Img = None
+            if Img is None: return []
             self.PrevRect = Surf.blit(Img, self.Pos)
             return [self.PrevRect]
         return []
@@ -712,6 +714,13 @@ class EntryBox(PygCtl.PygCtl):
         self.LineH = Fnt.get_linesize()
         self.OldCursor = None
     def SetSize(self, Size):
+        self.Size = Size
+        self.CollRect = pygame.rect.Rect(self.Pos, self.Size)
+    def SetPos(self, Pos):
+        self.Pos = Pos
+        self.CollRect = pygame.rect.Rect(self.Pos, self.Size)
+    def SetPosSize(self, Pos, Size):
+        self.Pos = Pos
         self.Size = Size
         self.CollRect = pygame.rect.Rect(self.Pos, self.Size)
     def OnEvt(self, Evt, Pos):
