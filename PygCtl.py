@@ -228,13 +228,18 @@ class Label(PygCtl):
         self.TotRect = CalcCenter(
             Fnt.size(Lbl), self.Pos,
             bool(self.Centered&1), bool(self.Centered&2))
-        self.PrevRect = self.TotRect
+        self.PrevRect = None
     def CollidePt(self, Pos):
         return self.TotRect.collidepoint(Pos)
     def PreDraw(self, Surf):
-        return [Surf.fill(BKGR, self.PrevRect)]
+        if self.PrevRect is None:
+            return [Surf.fill(BKGR, self.TotRect)]
+        else:
+            Rtn = Surf.fill(BKGR, self.PrevRect)
+            self.PrevRect = None
+            return [Rtn]
     def Draw(self, Surf):
-        return [Surf.blit(self.Fnt.render(self.Lbl, 0, self.Color[1], self.Color[0]), self.Pos)]
+        return [Surf.blit(self.Fnt.render(self.Lbl, 0, self.Color[1], self.Color[0]), self.TotRect)]
     def SetLbl(self, Lbl=None, Color=None, Pos=None, Centered=None):
         NoChg = 0
         if Lbl != None: self.Lbl = Lbl
@@ -246,7 +251,8 @@ class Label(PygCtl):
         if Centered != None: self.Centered = Centered
         else:NoChg += 1
         if NoChg >= 4:return
-        self.PrevRect = self.TotRect
+        if self.PrevRect is None: self.PrevRect = self.TotRect
+        else: self.PrevRect = self.PrevRect.union(self.TotRect)
         self.TotRect = CalcCenter(
             self.Fnt.size(self.Lbl), self.Pos,
             bool(self.Centered&1), bool(self.Centered&2))
@@ -255,6 +261,7 @@ class Button(PygCtl):
     def __init__(self, Lbl):
         self.Lbl = Lbl
         self.TotRect = None
+        self.GlobCaptures = {}
     def OnEvt(self, Evt, Pos):
         if Evt.type == pygame.MOUSEBUTTONDOWN:
             return self.OnMDown(Evt)
@@ -265,6 +272,25 @@ class Button(PygCtl):
         elif Evt.type == pygame.KEYUP:
             return self.OnKUp(Evt, Pos)
         else: return False
+    def AddGlobCapture(self, EvtType, Data):
+        self.GlobCaptures[EvtType] = Data
+    def RemGlobCapture(self, EvtType):
+        if EvtType in self.GlobCaptures:
+            del self.GlobCaptures[EvtType]
+    def IsGlobCapture(self, Evt):
+        if Evt.type not in self.GlobCaptures:
+            return False
+        Data = self.GlobCaptures[Evt.type]
+        if isinstance(Data, dict):
+            for k in Data:
+                if getattr(Evt, k) != Data[k]:
+                    return False
+            return True
+        elif callable(Data):
+            return Data(Evt)
+        elif isinstance(Data, (bool, int, long)):
+            return bool(Data)
+        else: return True
     def OnMDown(self, Evt):
         return False
     def OnMUp(self, Evt):
@@ -283,11 +309,11 @@ class Button(PygCtl):
         self.RecalcRect()
         SetRedraw(self)
 class TogBtn(Button):
-    def __init__(self, Lbl, Pos, Fnt, LstColors = ((RED, WHITE), (GREEN, WHITE)), LstActions = (None, None)):
-        self.Lbl = Lbl
+    def __init__(self, Lbl, Pos, Fnt, LstColors = ((RED, WHITE), (GREEN, WHITE)), LstActions = (None, None), DefSt=0):
+        super(TogBtn, self).__init__(Lbl)
         self.LstColors = list(LstColors)
         self.LstActions = list(LstActions)
-        self.CurSt = 0
+        self.CurSt = DefSt
         self.Pressed = False
         self.Pos = Pos
         self.Fnt = Fnt
@@ -306,6 +332,14 @@ class TogBtn(Button):
         CurAct = self.LstActions[self.CurSt]
         if CurAct is not None: CurAct(self, Evt.pos)
         return True
+    def OnEvtGlobal(self, Evt):
+        if self.IsGlobCapture(Evt):
+            self.Pressed = False
+            self.CurSt += 1
+            self.CurSt %= len(self.LstColors)
+            CurAct = self.LstActions[self.CurSt]
+            if CurAct is not None: CurAct(self, self.Pos)
+            return True
     def PreDraw(self, Surf):
         return [Surf.fill(BKGR, self.PrevRect)]
     def Draw(self, Surf):
@@ -316,7 +350,7 @@ class TogBtn(Button):
         self.TotRect = pygame.rect.Rect(self.Pos, self.Fnt.size(self.Lbl))
 class PressBtn(Button):
     def __init__(self, Lbl, ActFunc, Pos, Fnt, OffColor = (RED, WHITE), OnColor = (GREEN, WHITE)):
-        self.Lbl = Lbl
+        super(PressBtn, self).__init__(Lbl)
         self.CurSt = False
         self.Pos = Pos
         self.Fnt = Fnt
@@ -338,6 +372,10 @@ class PressBtn(Button):
     def OnEvtGlobal(self, Evt):
         if self.CurSt and Evt.type == pygame.MOUSEBUTTONUP and Evt.button == 1:
             self.CurSt = False
+            return True
+        elif self.IsGlobCapture(Evt):
+            self.CurSt = False
+            if self.ActFunc is not None: self.ActFunc(self, self.Pos)
             return True
         return False
     def PreDraw(self, Surf):
@@ -398,6 +436,11 @@ LstRedraw = []
 def SetRedraw(TheCtl):
     global LstRedraw
     if not(TheCtl in LstRedraw): LstRedraw.append(TheCtl)
+def SetListRedraw(LstRedrawCtl):
+    global LstRedraw
+    for TheCtl in LstRedrawCtl:
+        if not (TheCtl in LstRedraw):
+            LstRedraw.append(TheCtl)
 CurPos = (0, 0)
 def SetCtls(Lst):
     global LstCtl
@@ -468,10 +511,14 @@ def RunCtls(IsContFunc = None):
         CtlEvtAllow = True
         if Evt.type == pygame.QUIT:
             return -1
+        elif CurCtl is not None and CurCtl not in LstCtl:
+            CurCtl = None
+            ChgdPos = False
+            CurCtl = CalcCollide(CurCtl, LstCtl, CurPos)
         elif ChgdPos:
             ChgdPos = False
             CurCtl = CalcCollide(CurCtl, LstCtl, CurPos)
-        elif Evt.type == pygame.MOUSEMOTION:
+        if Evt.type == pygame.MOUSEMOTION:
             CurPos = Evt.pos
             CurCtl = CalcCollide(CurCtl, LstCtl, CurPos)
         elif DctEvtFunc.has_key(Evt.type):
