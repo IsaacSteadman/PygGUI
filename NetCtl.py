@@ -1,3 +1,4 @@
+#! /usr/bin/env python2
 import pygame
 import sys
 import Queue
@@ -756,4 +757,4 @@ def Main2():
     pygame.quit()
 
 
-#if __name__ == "__main__": Main1()
+if __name__ == "__main__": Main1()
