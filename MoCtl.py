@@ -2,40 +2,53 @@ import PygCtl
 from PygCtl import pygame
 from ModuleHelper import *
 from TextUtils import TextLineView, ClipboardHandler
+
+
 class PygClipboard(ClipboardHandler):
     def __init__(self):
         pygame.scrap.init()
+
     def put(self, typ, data):
-        Attrs = {"charset":"utf-16-le"}
+        Attrs = {"charset": "utf-16-le"}
         for attr in typ.split(";")[1:]:
             a = attr.split('=')
-            if len(a) != 2: continue
+            if len(a) != 2:
+                continue
             a, b = a
             Attrs[a] = b
         pygame.scrap.put(typ, data.encode(Attrs["charset"]))
+
     def get(self, typ):
-        Attrs = {"charset":"utf-16-le"}
+        Attrs = {"charset": "utf-16-le"}
         for attr in typ.split(";")[1:]:
             a = attr.split('=')
-            if len(a) != 2: continue
+            if len(a) != 2:
+                continue
             a, b = a
             Attrs[a] = b
         return pygame.scrap.get(typ).decode(Attrs["charset"])
+
+
 class PyperClipboard(ClipboardHandler):
     pyperclip = None
+
     def __init__(self):
         if self.pyperclip is None:
             import pyperclip
             self.pyperclip = pyperclip
             PyperClipboard.pyperclip = pyperclip
+
     def put(self, typ, data):
         assert typ == "UTF8_STRING" or typ.startswith("text/plain"), "PyperClipboard only works with text"
         self.pyperclip.copy(data)
+
     def get(self, typ):
         assert typ == "UTF8_STRING" or typ.startswith("text/plain"), "PyperClipboard only works with text"
         return self.pyperclip.paste()
-#PygCtl = AttrWatcher(PygCtl)
-CacheImgs = False
+
+
+# PygCtl = AttrWatcher(PygCtl)
+cache_imgs = False
 PygCtlAttrs = [
     "PygCtl",
     "RED",
@@ -44,295 +57,377 @@ PygCtlAttrs = [
     "BKGR",
     "PressBtn",
     "Init",
-    "LstCtl",
-    "SetRedraw",
-    "ChgdPos",
+    "ctls",
+    "set_redraw",
+    "chgd_pos",
     "RunCtls"]
 for attr in PygCtlAttrs:
     RequireAttr(PygCtl, attr)
-def UpdPos():
-    PygCtl.ChgdPos = True
-def Combine(a, b, Amt):
+
+
+def upd_pos():
+    PygCtl.chgd_pos = True
+
+
+def combine(a, b, Amt):
     return int(b[0] * Amt + a[0] * (1 - Amt)), int(b[1] * Amt + a[1] * (1 - Amt)), int(b[2] * Amt + a[2] * (1 - Amt))
-def InitGrad(Lst, From, To):
-    for c in xrange(len(Lst)):
-        Lst[c] = Combine(From, To, float(c) / len(Lst))
-def MulColor(a, Amt):
+
+
+def init_gradient(Lst, From, To):
+    for c in range(len(Lst)):
+        Lst[c] = combine(From, To, float(c) / len(Lst))
+
+
+def mul_color(a, Amt):
     return tuple([int(x * Amt) for x in a])
-class ListChild(PygCtl.PygCtl):
-    def __init__(self, zIndex):
-        self.PrevRect = None
-        self.Pos = None
-        self.zIndex = zIndex
-        self.Parent = None
-        self.Img = None
-        self.IsShow = True
-        self.CollRect = None
-    def Hide(self):
-        self.IsShow = False
-        PygCtl.SetRedraw(self)
-        try:
-            PygCtl.LstCtl.remove(self)
-        except:
-            pass
-    def OnEvt(self, Evt, Pos):
-        if Evt.type == pygame.MOUSEBUTTONDOWN:
-            if Evt.button == 5:
-                self.Parent.ScrollDown()
-            elif Evt.button == 4:#Wheel rolled up
-                self.Parent.ScrollUp()
-            elif Evt.button == 1 or Evt.button == 3:#left click
-                if self.RelPos == 0:#selected
-                    return self.Click(Evt)
-                elif self.RelPos > 0:
-                    #self.Parent.ScrollDown()
-                    return self.Click(Evt)
-                elif self.RelPos < 0:
-                    #self.Parent.ScrollUp()
-                    return self.Click(Evt)
-        return False
-    def Click(self, Evt):
-        return False
-    def Show(self):
-        self.IsShow = True
-        if not(self in PygCtl.LstCtl):
-            PygCtl.LstCtl.insert(self.zIndex, self)
-        PygCtl.SetRedraw(self)
-    def Draw(self, Surf):
-        if self.IsShow and self.Pos is not None:
-            Img = self.Img
-            if Img is None: Img = self.GetImg()
-            if CacheImgs: self.Img = Img
-            else: self.Img = None
-            if Img is None: return []
-            self.PrevRect = Surf.blit(Img, self.Pos)
-            return [self.PrevRect]
-        return []
-    def PreDraw(self, Surf):
-        if self.PrevRect is not None:
-            Rtn = Surf.fill(PygCtl.BKGR, self.PrevRect)
-            self.PrevRect = None
-            return [Rtn]
-        return []
-    def SetPos(self, Pos, Index):
-        self.Pos = Pos
-        if self.IsShow: PygCtl.SetRedraw(self)
-        self.RelPos = Index - self.Parent.CurPos
-        self.CollRect = pygame.rect.Rect(self.Pos, self.GetSize())
-    def CollidePt(self, Pt):
-        return self.CollRect is not None and self.CollRect.collidepoint(Pt)
-    def GetSize(self):
-        try:
-            return self.Img.get_size()
-        except AttributeError:
-            return (0, 0)
-    def GetImg(self):
-        return None
+
+
 def Hyperbola(y, b, a):
-    return -a * (((y ** 2.0)/(b ** 2.0) + 1) ** .5)
-class ScrollBase(PygCtl.PygCtl):
-    def __init__(self, LstPrn, nDisp, Pos, Spacing, Anim=True):
-        self.LstPrn = LstPrn
-        for Child in self.LstPrn:
-            Child.Parent = self
-        self.CurPos = 0
-        self.nDisp = nDisp
-        self.RealPos = Pos
-        self.PrevRect = None
-        self.EvtTick = pygame.USEREVENT
-        self.LnColor = PygCtl.WHITE
-        pygame.time.set_timer(self.EvtTick, 1000 / 20)
-        Off = .5
-        if self.nDisp % 2 == 1: Off = 1
-        self.Center = (self.nDisp - Off) * Spacing
-        self.Spacing = Spacing
-        self.Tick = 0
-        self.MaxTick = 10
-        self.Width = 0
-        for Elem in LstPrn:
-            ElemW = Elem.GetSize()[0]
-            if ElemW > self.Width: self.Width = ElemW
-        self.xOffPos = 0
-        self.SetVisual(nDisp, Spacing)
-        if Anim: self.Animate()
-    def GetElemXOff(self, yOffCenter):
-        return 0
-    def SetVisual(self, nDisp, Spacing = None):
-        self.nDisp = nDisp
-        if Spacing is not None: self.Spacing = Spacing
-        StartOff = (self.nDisp / 2) * self.Spacing
-        self.xOffPos = self.GetElemXOff(StartOff - self.Center)
-        MidOff = self.GetElemXOff(0)
-        yOffPos = (self.nDisp - self.nDisp % 2) * self.Spacing / 2
-        self.Pos = (self.RealPos[0] - self.xOffPos, self.RealPos[1] - yOffPos)
-        self.CollRect = pygame.rect.Rect(self.RealPos[0], self.RealPos[1], self.Width + (MidOff - self.xOffPos), self.nDisp * self.Spacing)
-        #print self.xOffPos, MidOff, self.Width
-    def PreDraw(self, Surf):
-        if self.PrevRect is not None:
-            Surf.fill(PygCtl.BKGR, self.PrevRect)
-            Rtn = self.PrevRect
-            self.PrevRect = None
-            return [Rtn]
+    return -a * (((y ** 2.0) / (b ** 2.0) + 1) ** .5)
+
+
+class ListChild(PygCtl.PygCtl):
+    def __init__(self, z_index):
+        self.prev_rect = None
+        self.pos = None
+        self.z_index = z_index
+        self.parent = None
+        self.img = None
+        self.is_show = True
+        self.coll_rect = None
+
+    def hide(self):
+        self.is_show = False
+        PygCtl.set_redraw(self)
+        try:
+            PygCtl.ctls.remove(self)
+        except ValueError:
+            pass
+
+    def on_evt(self, app, evt, pos):
+        if evt.type == pygame.MOUSEBUTTONDOWN:
+            if evt.button == 5:
+                self.parent.scroll_down()
+            elif evt.button == 4:  # Wheel rolled up
+                self.parent.scroll_up()
+            elif evt.button == 1 or evt.button == 3:  # left click
+                if self.rel_pos == 0:  # selected
+                    return self.click(evt)
+                elif self.rel_pos > 0:
+                    # self.parent.scroll_down()
+                    return self.click(evt)
+                elif self.rel_pos < 0:
+                    # self.parent.scroll_up()
+                    return self.click(evt)
+        return False
+
+    def click(self, evt):
+        return False
+
+    def show(self):
+        self.is_show = True
+        if not (self in PygCtl.ctls):
+            PygCtl.ctls.insert(self.z_index, self)
+        PygCtl.set_redraw(self)
+
+    def draw(self, app):
+        if self.is_show and self.pos is not None:
+            img = self.img
+            if img is None:
+                img = self.get_img()
+            if cache_imgs:
+                self.img = img
+            else:
+                self.img = None
+            if img is None:
+                return []
+            self.prev_rect = surf.blit(img, self.pos)
+            return [self.prev_rect]
         return []
-    def Draw(self, Surf):
-        #Fixes a problem with antialiased alpha blending ListChild instances
+
+    def pre_draw(self, app):
+        if self.prev_rect is not None:
+            rtn = surf.fill(PygCtl.BKGR, self.prev_rect)
+            self.prev_rect = None
+            return [rtn]
+        return []
+
+    def set_pos(self, pos, index):
+        self.pos = pos
+        if self.is_show:
+            PygCtl.set_redraw(self)
+        self.rel_pos = index - self.parent.cur_pos
+        self.coll_rect = pygame.rect.Rect(self.pos, self.get_size())
+
+    def collide_pt(self, pt):
+        return self.coll_rect is not None and self.coll_rect.collidepoint(pt)
+
+    def get_size(self):
+        try:
+            return self.img.get_size()
+        except AttributeError:
+            return 0, 0
+
+    def get_img(self):
+        return None
+
+
+class ScrollBase(PygCtl.PygCtl):
+    def __init__(self, lst_prn, n_disp, pos, spacing, anim=True):
+        self.lst_prn = lst_prn
+        for child in self.lst_prn:
+            child.parent = self
+        self.cur_pos = 0
+        self.n_disp = n_disp
+        self.real_pos = pos
+        self.prev_rect = None
+        self.tick_event_id = pygame.USEREVENT
+        self.line_color = PygCtl.WHITE
+        pygame.time.set_timer(self.tick_event_id, 1000 / 20)
+        off = .5
+        if self.n_disp % 2 == 1:
+            off = 1
+        self.center = (self.n_disp - off) * spacing
+        self.spacing = spacing
+        self.tick = 0
+        self.max_tick = 10
+        self.width = 0
+        for elem in lst_prn:
+            elem_w = elem.get_size()[0]
+            if elem_w > self.width:
+                self.width = elem_w
+        self.x_off_pos = 0
+        self.set_visual(n_disp, spacing)
+        if anim:
+            self.animate()
+
+    def get_elem_x_off(self, y_off_center):
+        return 0
+
+    def set_visual(self, n_disp, spacing=None):
+        self.n_disp = n_disp
+        if spacing is not None:
+            self.spacing = spacing
+        start_off = (self.n_disp / 2) * self.spacing
+        self.x_off_pos = self.get_elem_x_off(start_off - self.center)
+        mid_off = self.get_elem_x_off(0)
+        y_off_pos = (self.n_disp - self.n_disp % 2) * self.spacing / 2
+        self.pos = (self.real_pos[0] - self.x_off_pos, self.real_pos[1] - y_off_pos)
+        self.coll_rect = pygame.rect.Rect(self.real_pos[0], self.real_pos[1], self.width + (mid_off - self.x_off_pos),
+                                          self.n_disp * self.spacing)
+        # print self.x_off_pos, mid_off, self.width
+
+    def pre_draw(self, app):
+        if self.prev_rect is not None:
+            surf.fill(PygCtl.BKGR, self.prev_rect)
+            rtn = self.prev_rect
+            self.prev_rect = None
+            return [rtn]
+        return []
+
+    def draw(self, app):
+        # Fixes a problem with antialiased alpha blending ListChild instances
         #  Only a Temporary fix
-        Surf.fill(PygCtl.BKGR, self.CollRect)
-        self.PrevRect = pygame.draw.rect(Surf, self.LnColor, self.CollRect, 1)
-        return [self.PrevRect]
-    def OnEvtGlobal(self, Evt):
-        if Evt.type == self.EvtTick:
-            if self.Tick == 0: return False
-            elif self.Tick > 0: self.Tick -= 1
-            elif self.Tick < 0: self.Tick += 1
-            self.Animate()
+        surf.fill(PygCtl.BKGR, self.coll_rect)
+        self.prev_rect = pygame.draw.rect(surf, self.line_color, self.coll_rect, 1)
+        return [self.prev_rect]
+
+    def on_evt_global(self, app, evt):
+        if evt.type == self.tick_event_id:
+            if self.tick == 0:
+                return False
+            elif self.tick > 0:
+                self.tick -= 1
+            elif self.tick < 0:
+                self.tick += 1
+            self.animate()
         return False
-    def Animate(self):
-        Start = self.CurPos - self.nDisp / 2
-        StartOff = (self.nDisp / 2) * self.Spacing + (self.Tick * self.Spacing / self.MaxTick)
-        if Start < 0:
-            StartOff += -Start * self.Spacing
-            Start = 0
-        End = self.CurPos + (self.nDisp + 1) / 2
-        if End > len(self.LstPrn):
-            End = len(self.LstPrn)
-        for c in xrange(max(0, Start - self.nDisp), Start):
-            self.LstPrn[c].Hide()
-        for c in xrange(Start, End):
-            self.LstPrn[c].Show()
-            xOffPos = self.GetElemXOff(StartOff - self.Center)
-            self.LstPrn[c].SetPos((self.Pos[0] + xOffPos, StartOff + self.Pos[1]), c)
-            StartOff += self.Spacing
-        for c in xrange(End, min(len(self.LstPrn), End + self.nDisp)):
-            self.LstPrn[c].Hide()
-        UpdPos()
-    def CollidePt(self, Pt):
-        return self.CollRect.collidepoint(Pt)
-    def OnEvt(self, Evt, Pos):
-        if Evt.type == pygame.MOUSEBUTTONDOWN:
-            if Evt.button == 5:
-                self.ScrollDown()
-            elif Evt.button == 4:#Wheel rolled up
-                self.ScrollUp()
+
+    def animate(self):
+        start = self.cur_pos - self.n_disp / 2
+        start_off = (self.n_disp / 2) * self.spacing + (self.tick * self.spacing / self.max_tick)
+        if start < 0:
+            start_off += -start * self.spacing
+            start = 0
+        end = self.cur_pos + (self.n_disp + 1) / 2
+        if end > len(self.lst_prn):
+            end = len(self.lst_prn)
+        for c in range(max(0, start - self.n_disp), start):
+            self.lst_prn[c].hide()
+        for c in range(start, end):
+            self.lst_prn[c].show()
+            x_off_pos = self.get_elem_x_off(start_off - self.center)
+            self.lst_prn[c].set_pos((self.pos[0] + x_off_pos, start_off + self.pos[1]), c)
+            start_off += self.spacing
+        for c in range(end, min(len(self.lst_prn), end + self.n_disp)):
+            self.lst_prn[c].hide()
+        upd_pos()
+
+    def collide_pt(self, pt):
+        return self.coll_rect.collidepoint(pt)
+
+    def on_evt(self, app, evt, pos):
+        if evt.type == pygame.MOUSEBUTTONDOWN:
+            if evt.button == 5:
+                self.scroll_down()
+            elif evt.button == 4:  # Wheel rolled up
+                self.scroll_up()
         return False
-    def ScrollDown(self):
-        if self.CurPos < len(self.LstPrn) - 1:
-            self.CurPos += 1
-            self.Tick = self.MaxTick
-            self.Animate()
-    def ScrollUp(self):
-        if self.CurPos > 0:
-            self.CurPos -= 1
-            self.Tick = -self.MaxTick
-            self.Animate()
+
+    def scroll_down(self):
+        if self.cur_pos < len(self.lst_prn) - 1:
+            self.cur_pos += 1
+            self.tick = self.max_tick
+            self.animate()
+
+    def scroll_up(self):
+        if self.cur_pos > 0:
+            self.cur_pos -= 1
+            self.tick = -self.max_tick
+            self.animate()
+
+
 class HyperScroll(ScrollBase):
-    def __init__(self, LstPrn, nDisp, Pos, Spacing, aH = 50, bH = 60):
-        self.aH = aH
-        self.bH = bH
-        super(HyperScroll, self).__init__(LstPrn, nDisp, Pos, Spacing)
-    def GetElemXOff(self, y):#y = yOffCenter
-        return -self.aH * (((y ** 2.0)/(self.bH ** 2.0) + 1) ** .5)
+    def __init__(self, lst_prn, n_disp, pos, spacing, hyperbola_a=50, hyperbola_b=60):
+        self.hyperbola_a = hyperbola_a
+        self.hyperbola_b = hyperbola_b
+        super(HyperScroll, self).__init__(lst_prn, n_disp, pos, spacing)
+
+    def get_elem_x_off(self, y_off_center):  # y = y_off_center
+        return -self.hyperbola_a * (((y_off_center ** 2.0) / (self.hyperbola_b ** 2.0) + 1) ** .5)
+
+
 class ClkLstElem(ListChild):
-    def __init__(self, Lbl, Fnt, Color = (PygCtl.WHITE, PygCtl.RED)):
+    def __init__(self, lbl, fnt, color=(PygCtl.WHITE, PygCtl.RED)):
         super(ClkLstElem, self).__init__(0)
-        self.Fnt = Fnt
-        self.SetLbl(Lbl, Color)
-    def SetLbl(self, Lbl = None, Color = None):
-        global CacheImgs
-        if Color is not None: self.Color = Color
-        if Lbl is not None: self.Lbl = Lbl
-        if CacheImgs: self.Img = self.GetImg()
-        if self in PygCtl.LstCtl: PygCtl.SetRedraw(self)
-    def Click(self, Evt):
+        self.fnt = fnt
+        self.lbl = lbl
+        self.color = color
+        self.img = self.get_img() if cache_imgs else None
+        self.set_lbl(lbl, color)
+
+    def set_lbl(self, lbl=None, color=None):
+        global cache_imgs
+        if color is not None:
+            self.color = color
+        if lbl is not None:
+            self.lbl = lbl
+        if cache_imgs:
+            self.img = self.get_img()
+        if self in PygCtl.ctls:
+            PygCtl.set_redraw(self)
+
+    def click(self, evt):
         return False
-    def GetImg(self):
-        if self.Color[1] == None:
-            return self.Fnt.render(self.Lbl, False, self.Color[0])
-        return self.Fnt.render(self.Lbl, False, self.Color[0], self.Color[1])
-    def GetSize(self):
-        global CacheImgs
-        if CacheImgs: return super(ListChild, self).GetSize()
-        else: return self.Fnt.size(self.Lbl)
+
+    def get_img(self):
+        if self.color[1] is None:
+            return self.fnt.render(self.lbl, False, self.color[0])
+        return self.fnt.render(self.lbl, False, self.color[0], self.color[1])
+
+    def get_size(self):
+        global cache_imgs
+        if cache_imgs:
+            return super(ClkLstElem, self).get_size()
+        else:
+            return self.fnt.size(self.lbl)
+
+
 class LblElem(ClkLstElem):
-    def __init__(self, Lbl, Fnt, Color = (PygCtl.WHITE, PygCtl.RED)):
-        super(LblElem, self).__init__(Lbl, Fnt, Color)
-        self.Selected = False
-        self.Queued = False
-    def Click(self, Evt):
-        if Evt.button == 1:
-            self.Selected = not self.Selected
-        elif Evt.button == 3:
-            self.Queued = not self.Queued
-        else: return False
-        self.Color = (PygCtl.WHITE, PygCtl.RED)
-        if self.Queued:
-            self.Color = (PygCtl.WHITE, (0, 0, 255))
-        if self.Selected:
-            self.Color = (PygCtl.WHITE, PygCtl.GREEN)
-        self.SetLbl()
+    def __init__(self, lbl, fnt, color=(PygCtl.WHITE, PygCtl.RED)):
+        super(LblElem, self).__init__(lbl, fnt, color)
+        self.selected = False
+        self.queued = False
+
+    def click(self, evt):
+        if evt.button == 1:
+            self.selected = not self.selected
+        elif evt.button == 3:
+            self.queued = not self.queued
+        else:
+            return False
+        self.color = (PygCtl.WHITE, PygCtl.RED)
+        if self.queued:
+            self.color = (PygCtl.WHITE, (0, 0, 255))
+        if self.selected:
+            self.color = (PygCtl.WHITE, PygCtl.GREEN)
+        self.set_lbl()
+
+
 SymCh = "!@#$%^&*()[]{}:;<>,./?~`-+=\\|"
-def GetPosInKern(Fnt, Txt0, Pos):
-    CurW = Fnt.size(Txt0[:Pos + 1])[0]
-    ChW = Fnt.size(Txt0[Pos:Pos + 1])[0]
-    return CurW - ChW
-#Translated from C++ from TemplateUtils.h in KyleUtils
-def BinaryApprox(List, Val):
-    Len = len(List)
-    CurLen = Len
-    Pos = Len >> 1
+
+
+def get_pos_in_kern(fnt, Txt0, pos):
+    cur_w = fnt.size(Txt0[:pos + 1])[0]
+    ch_w = fnt.size(Txt0[pos:pos + 1])[0]
+    return cur_w - ch_w
+
+
+# Translated from C++ from TemplateUtils.h in KyleUtils
+def binary_approx(List, Val):
+    length = len(List)
+    CurLen = length
+    pos = length >> 1
     while CurLen > 0:
-        if Val <= List[Pos] and (Pos == 0 or Val >= List[Pos - 1]):
-            return Pos
-        elif Val < List[Pos]:
+        if Val <= List[pos] and (pos == 0 or Val >= List[pos - 1]):
+            return pos
+        elif Val < List[pos]:
             CurLen >>= 1
-            Pos -= (CurLen + 1) >> 1
+            pos -= (CurLen + 1) >> 1
         else:
             CurLen = (CurLen - 1) >> 1
-            Pos += (CurLen >> 1) + 1
-    return Len
+            pos += (CurLen >> 1) + 1
+    return length
+
+
 class FuncListView(object):
-    def __init__(self, Func, Len):
-        self.Cache = [None] * Len
+    def __init__(self, Func, length):
+        self.Cache = [None] * length
         self.Func = Func
+
     def __len__(self):
         return len(self.Cache)
-    def __getitem__(self, Index):
-        if self.Cache[Index] == None: self.Cache[Index] = self.Func(Index)
-        return self.Cache[Index]
-ClipBoardTypes = ["text/plain;charset=utf-8", "UTF8_STRING", pygame.SCRAP_TEXT]
+
+    def __getitem__(self, index):
+        if self.Cache[index] is None:
+            self.Cache[index] = self.Func(index)
+        return self.Cache[index]
+
+
+clipboard_types = ["text/plain;charset=utf-8", "UTF8_STRING", pygame.SCRAP_TEXT]
 """
-EntryLine(Fnt, Pos, Size, Colors, PreChg, PostChg, Enter, DefTxt, Censor)
-    Fnt: type FROM pygame.font: Font, SysFont
+EntryLine(fnt, pos, size, colors, pre_chg, post_chg, enter, default_text, censor)
+    fnt: type FROM pygame.font: Font, SysFont
         Effect: Style of the text that the user types in the EntryLine
-    Size: indexable, 2 elements
-        Example (list): [Width, Height]
+    size: indexable, 2 elements
+        Example (list): [width, Height]
         Units: pixels
-        Effect: Size of the collision box of the EntryLine
-    Colors: type iterable, 1 or 2 3-tuples
+        Effect: size of the collision box of the EntryLine
+    colors: type iterable, 1 or 2 3-tuples
         Effect:
-            Colors[0] is the color of the text
-            Colors[1] if 2 elements, is the background color
+            colors[0] is the color of the text
+            colors[1] if 2 elements, is the background color
                 else, background color is transparent
         Units: 3-tuples of (R, G, B) each is 0-255
-    PreChg: OPTIONAL, type (callable)(Inst, Evt) -> bool(AllowEdit)
+    pre_chg: OPTIONAL, type (callable)(Inst, evt) -> bool(AllowEdit)
         Effect:
             called after an event is processed but before the text is changed,
             returning False will result in the edit not going through
             returning True will result in the edit going through
-            NOTE: do not change the text in this function, do that in PostChg
-    PostChg: OPTIONAL, type (callable)(Inst, Evt)
+            NOTE: do not change the text in this function, do that in post_chg
+    post_chg: OPTIONAL, type (callable)(Inst, evt)
         Effect:
             called after text is changed
             NOTE: you can change the text in this function
-    Enter: OPTIONAL, type (callable)(Inst)
+    enter: OPTIONAL, type (callable)(Inst)
         Effect:
             called after the return/enter key is pressed
-    DefTxt: OPTIONAL, type iterable of characters ie: str, list (of len 1 str)
+    default_text: OPTIONAL, type iterable of characters ie: str, list (of len 1 str)
         Effect:
             Text that is already in the EntryLine box,
             This text is treated the same way as text entered by the user
                 It does not disappear when the user types/clicks in the box
-    Censor: OPTIONAL, type (callable)(Txt) -> (str/unicode)(CensoredTxt)
+    censor: OPTIONAL, type (callable)(txt) -> (str/unicode)(CensoredTxt)
         Effect:
             called during drawing to get the text that will be displayed
             called for mouse clicks and moves to get the text for
@@ -341,274 +436,346 @@ EntryLine(Fnt, Pos, Size, Colors, PreChg, PostChg, Enter, DefTxt, Censor)
 Attributes for EntryLine:
     HiLtCol: type iterable, 1 or 2 3-tuples
         Effect: For highlighted text
-            Colors[0] is the color of the text
-            Colors[1] if 2 elements, is the background color
+            colors[0] is the color of the text
+            colors[1] if 2 elements, is the background color
                 else, background color is transparent
 """
+
+
 class EntryLine(PygCtl.PygCtl):
-    CursorTmr = pygame.USEREVENT + 1
-    #Cursor Threshhold, the fraction of character width
+    cursor_timer_event_id = pygame.USEREVENT + 1
+    # cursor Threshhold, the fraction of character width
     #  that represents border between 2 char positions
-    CursTH = .3
+    cursor_thresh = .3
+
     @staticmethod
-    def NextWord(LstTxt, TxtPos):
-        CurTyp = -1
-        for c in xrange(TxtPos, len(LstTxt)):
-            Ch = LstTxt[c]
-            if Ch.isalnum() or Ch == '_':
-                if CurTyp == -1: CurTyp = 0
-                elif CurTyp != 0: return c
-            elif Ch in SymCh:
-                if CurTyp == -1: CurTyp = 1
-                elif CurTyp != 1: return c
-            elif Ch.isspace():
-                if CurTyp != -1: return c
+    def next_word(lst_txt, txt_pos):
+        cur_type = -1
+        for c in range(txt_pos, len(lst_txt)):
+            ch = lst_txt[c]
+            if ch.isalnum() or ch == '_':
+                if cur_type == -1:
+                    cur_type = 0
+                elif cur_type != 0:
+                    return c
+            elif ch in SymCh:
+                if cur_type == -1:
+                    cur_type = 1
+                elif cur_type != 1:
+                    return c
+            elif ch.isspace():
+                if cur_type != -1:
+                    return c
             else:
-                if CurTyp == -1: CurTyp = 2
-                elif CurTyp != 2: return c
-        return len(LstTxt)
+                if cur_type == -1:
+                    cur_type = 2
+                elif cur_type != 2:
+                    return c
+        return len(lst_txt)
+
     @staticmethod
-    def PrevWord(LstTxt, TxtPos):
-        CurTyp = -1
-        for c in xrange(TxtPos, 0, -1):
-            Ch = LstTxt[c - 1]
-            if Ch.isalnum() or Ch == '_':
-                if CurTyp == -1: CurTyp = 0
-                elif CurTyp != 0: return c
-            elif Ch in SymCh:
-                if CurTyp == -1: CurTyp = 1
-                elif CurTyp != 1: return c
-            elif Ch.isspace():
-                if CurTyp != -1: return c
+    def prev_word(lst_txt, txt_pos):
+        cur_type = -1
+        for c in range(txt_pos, 0, -1):
+            ch = lst_txt[c - 1]
+            if ch.isalnum() or ch == '_':
+                if cur_type == -1:
+                    cur_type = 0
+                elif cur_type != 0:
+                    return c
+            elif ch in SymCh:
+                if cur_type == -1:
+                    cur_type = 1
+                elif cur_type != 1:
+                    return c
+            elif ch.isspace():
+                if cur_type != -1:
+                    return c
             else:
-                if CurTyp == -1: CurTyp = 2
-                elif CurTyp != 2: return c
+                if cur_type == -1:
+                    cur_type = 2
+                elif cur_type != 2:
+                    return c
         return 0
+
     @classmethod
-    def InitTimer(cls, EvtCode = None):
-        if EvtCode is not None: cls.CursorTmr = EvtCode
-        pygame.time.set_timer(cls.CursorTmr, 500)
+    def init_timer(cls, evt_code=None):
+        if evt_code is not None:
+            cls.cursor_timer_event_id = evt_code
+        pygame.time.set_timer(cls.cursor_timer_event_id, 500)
         cls.clipboard = PyperClipboard()
-    def __init__(self, Fnt, Pos, Size, Colors, PreChg=None, PostChg=None, Enter=None, DefTxt="", Censor=None):
-        self.Colors = Colors
-        self.HltCol = [(255,255,255),(0,0,255)]
-        self.Pos = Pos
-        self.Size = Size
-        self.PreChg = PreChg
-        self.PostChg = PostChg
-        self.Enter = Enter
-        self.Censor = Censor
-        self.IsSel = False
-        self.HiLite = False
-        self.HiLtPos = 0
-        self.Txt = list(DefTxt)
-        self.ChPos = 0
-        self.ChOff = 0#x offset in pixels
-        self.CurKey = None
-        self.CollRect = pygame.rect.Rect(self.Pos, self.Size)
-        self.PrevRect = self.CollRect
-        self.Fnt = Fnt
-        self.CursorSt = True
-    def OnEvt(self, Evt, Pos):
-        if Evt.type == pygame.MOUSEBUTTONDOWN:
-            DrawTxt = u"".join(self.Txt)
-            if self.Censor is not None: DrawTxt = self.Censor(DrawTxt)
-            self.HiLite = True
-            self.IsSel = True
-            Pos = (Pos[0] - self.Pos[0], Pos[1] - self.Pos[1])
-            CTH = EntryLine.CursTH
-            GetSzTxt = lambda x: self.Fnt.size(DrawTxt[:x])[0]
-            LstV = FuncListView(GetSzTxt, len(DrawTxt))
-            #since LstV[0] == 0 and Pos[0] >= 0 is True, result->ChPos >= 1
-            ChPos = BinaryApprox(LstV, Pos[0])
-            if ChPos < len(LstV):
-                OffX = LstV[ChPos-1]
-                ChW = LstV[ChPos] - OffX
-                if Pos[0] - OffX <= CTH * ChW:ChPos -= 1
-            self.ChPos = ChPos
-            self.HiLtPos = ChPos
+
+    def __init__(self, fnt, pos, size, colors, pre_chg=None, post_chg=None, enter=None, default_text="", censor=None):
+        self.colors = colors
+        self.highlight_colors = [(255, 255, 255), (0, 0, 255)]
+        self.pos = pos
+        self.size = size
+        self.pre_chg = pre_chg
+        self.post_chg = post_chg
+        self.enter = enter
+        self.censor = censor
+        self.is_selected = False
+        self.highlight = False
+        self.highlight_pos = 0
+        self.txt = list(default_text)
+        self.ch_pos = 0
+        self.ch_off = 0  # x offset in pixels
+        self.cur_key = None
+        self.coll_rect = pygame.rect.Rect(self.pos, self.size)
+        self.prev_rect = self.coll_rect
+        self.fnt = fnt
+        self.old_cursor = None
+        self.cursor_state = True
+
+    def on_evt(self, app, evt, pos):
+        if evt.type == pygame.MOUSEBUTTONDOWN:
+            draw_txt = u"".join(self.txt)
+            if self.censor is not None:
+                draw_txt = self.censor(draw_txt)
+            self.highlight = True
+            self.is_selected = True
+            pos = (pos[0] - self.pos[0], pos[1] - self.pos[1])
+            cursor_thresh = EntryLine.cursor_thresh
+            get_size_text = lambda x: \
+                self.fnt.size(draw_txt[:x])[0]
+            lst_v = FuncListView(get_size_text, len(draw_txt))
+            # since lst_v[0] == 0 and pos[0] >= 0 is True, result->ch_pos >= 1
+            ch_pos = binary_approx(lst_v, pos[0])
+            if ch_pos < len(lst_v):
+                off_x = lst_v[ch_pos - 1]
+                ch_w = lst_v[ch_pos] - off_x
+                if pos[0] - off_x <= cursor_thresh * ch_w:
+                    ch_pos -= 1
+            self.ch_pos = ch_pos
+            self.highlight_pos = ch_pos
             return True
         return False
-    def OnPreChg(self, Evt):
-        return self.PreChg is None or self.PreChg(self, Evt)
-    def OnEvtGlobal(self, Evt):
-        if Evt.type == pygame.MOUSEBUTTONDOWN:
-            if self.CollRect.collidepoint(Evt.pos): return False
-            if (self.HiLite or self.IsSel):
-                self.HiLite = False
-                self.IsSel = False
-        elif Evt.type == pygame.MOUSEBUTTONUP:
-            if self.HiLite: self.HiLite = False
-        elif Evt.type == pygame.MOUSEMOTION and self.HiLite:
-            DrawTxt = u"".join(self.Txt)
-            if self.Censor is not None: DrawTxt = self.Censor(DrawTxt)
-            Pos = Evt.pos
-            Pos = [Pos[0] - self.Pos[0], Pos[1] - self.Pos[1]]
-            if Pos[0] < 0: Pos[0] = 0
-            CTH = EntryLine.CursTH
-            GetSzTxt = lambda x: self.Fnt.size(DrawTxt[:x])[0]
-            LstV = FuncListView(GetSzTxt, len(DrawTxt))
-            #since LstV[0] == 0 and Pos[0] >= 0 is True, result->ChPos >= 1
-            ChPos = BinaryApprox(LstV, Pos[0])
-            if ChPos < len(LstV):
-                OffX = LstV[ChPos-1]
-                ChW = LstV[ChPos] - OffX
-                if Pos[0] - OffX <= CTH * ChW:ChPos -= 1
-            self.ChPos = ChPos
+
+    def on_mouse_enter(self):
+        if pygame.mouse.get_cursor() != self.cursor:
+            self.old_cursor = pygame.mouse.get_cursor()
+            pygame.mouse.set_cursor(*self.cursor)
+        return super(EntryLine, self).on_mouse_enter()
+
+    def on_mouse_exit(self):
+        if self.old_cursor is not None:
+            pygame.mouse.set_cursor(*self.old_cursor)
+            self.old_cursor = None
+        return super(EntryLine, self).on_mouse_exit()
+
+    def on_pre_chg(self, evt):
+        return self.pre_chg is None or self.pre_chg(self, evt)
+
+    def on_evt_global(self, app, evt):
+        if evt.type == pygame.MOUSEBUTTONDOWN:
+            if self.coll_rect.collidepoint(evt.pos):
+                return False
+            if self.highlight or self.is_selected:
+                self.highlight = False
+                self.is_selected = False
+        elif evt.type == pygame.MOUSEBUTTONUP:
+            if self.highlight:
+                self.highlight = False
+        elif evt.type == pygame.MOUSEMOTION and self.highlight:
+            draw_txt = u"".join(self.txt)
+            if self.censor is not None:
+                draw_txt = self.censor(draw_txt)
+            pos = evt.pos
+            pos = [pos[0] - self.pos[0], pos[1] - self.pos[1]]
+            if pos[0] < 0:
+                pos[0] = 0
+            cursor_thresh = EntryLine.cursor_thresh
+            get_size_text = lambda x: \
+                self.fnt.size(draw_txt[:x])[0]
+            lst_v = FuncListView(get_size_text, len(draw_txt))
+            # since lst_v[0] == 0 and pos[0] >= 0 is True, result->ch_pos >= 1
+            ch_pos = binary_approx(lst_v, pos[0])
+            if ch_pos < len(lst_v):
+                off_x = lst_v[ch_pos - 1]
+                ch_w = lst_v[ch_pos] - off_x
+                if pos[0] - off_x <= cursor_thresh * ch_w:
+                    ch_pos -= 1
+            self.ch_pos = ch_pos
             return True
-        elif Evt.type == pygame.KEYDOWN and self.IsSel:
-            IsChg = False
-            if Evt.key == pygame.K_BACKSPACE:
-                if not ((self.ChPos > 0 or self.ChPos != self.HiLtPos) and self.OnPreChg(Evt)):
+        elif evt.type == pygame.KEYDOWN and self.is_selected:
+            is_chg = False
+            if evt.key == pygame.K_BACKSPACE:
+                if not ((self.ch_pos > 0 or self.ch_pos != self.highlight_pos) and self.on_pre_chg(evt)):
                     return False
-                elif Evt.mod & pygame.KMOD_CTRL > 0:
-                    Start = EntryLine.PrevWord(self.Txt, self.ChPos)
-                    self.Txt[Start:self.ChPos] = []
-                    Off = self.ChPos - Start
-                    DoOff = 0#Default make HiLtPos = ChPos
-                    if self.HiLtPos > self.ChPos: DoOff = 1#Offset HiLtPos same amount as ChPos
-                    elif self.HiLtPos < self.ChPos - Start: DoOff = 2#Leave HiLtPos Alone
-                    self.ChPos = Start
-                    if DoOff == 1: self.HiLtPos -= Off
-                    elif DoOff == 0: self.HiLtPos = self.ChPos
-                    IsChg = True
+                elif evt.mod & pygame.KMOD_CTRL > 0:
+                    start = EntryLine.prev_word(self.txt, self.ch_pos)
+                    self.txt[start:self.ch_pos] = []
+                    off = self.ch_pos - start
+                    DoOff = 0  # Default make highlight_pos = ch_pos
+                    if self.highlight_pos > self.ch_pos:
+                        DoOff = 1  # Offset highlight_pos same amount as ch_pos
+                    elif self.highlight_pos < self.ch_pos - start:
+                        DoOff = 2  # Leave highlight_pos Alone
+                    self.ch_pos = start
+                    if DoOff == 1:
+                        self.highlight_pos -= off
+                    elif DoOff == 0:
+                        self.highlight_pos = self.ch_pos
+                    is_chg = True
                 else:
-                    if self.ChPos != self.HiLtPos:
-                        Start, End = sorted((self.ChPos, self.HiLtPos))
-                        self.Txt[Start:End] = []
-                        self.ChPos = Start
+                    if self.ch_pos != self.highlight_pos:
+                        start, end = sorted((self.ch_pos, self.highlight_pos))
+                        self.txt[start:end] = []
+                        self.ch_pos = start
                     else:
-                        self.ChPos -= 1
-                        self.Txt.pop(self.ChPos)
-                    IsChg = True
-                    self.HiLtPos = self.ChPos
-            elif Evt.key == pygame.K_DELETE:
-                if not ((self.ChPos < len(self.Txt) or self.ChPos != self.HiLtPos) and self.OnPreChg(Evt)):
+                        self.ch_pos -= 1
+                        self.txt.pop(self.ch_pos)
+                    is_chg = True
+                    self.highlight_pos = self.ch_pos
+            elif evt.key == pygame.K_DELETE:
+                if not ((self.ch_pos < len(self.txt) or self.ch_pos != self.highlight_pos) and self.on_pre_chg(evt)):
                     return False
-                elif Evt.mod & pygame.KMOD_CTRL > 0:
-                    End = EntryLine.NextWord(self.Txt, self.ChPos)
-                    self.Txt[self.ChPos:End] = []
-                    Off = End - self.ChPos
-                    if self.HiLtPos > self.ChPos: self.HiLtPos -= Off
-                    IsChg = True
+                elif evt.mod & pygame.KMOD_CTRL > 0:
+                    end = EntryLine.next_word(self.txt, self.ch_pos)
+                    self.txt[self.ch_pos:end] = []
+                    off = end - self.ch_pos
+                    if self.highlight_pos > self.ch_pos:
+                        self.highlight_pos -= off
+                    is_chg = True
                 else:
-                    if self.ChPos != self.HiLtPos:
-                        Start, End = sorted((self.ChPos, self.HiLtPos))
-                        self.Txt[Start:End] = []
-                        self.ChPos = Start
-                        self.HiLtPos = Start
+                    if self.ch_pos != self.highlight_pos:
+                        start, end = sorted((self.ch_pos, self.highlight_pos))
+                        self.txt[start:end] = []
+                        self.ch_pos = start
+                        self.highlight_pos = start
                     else:
-                        self.Txt.pop(self.ChPos)
-                    IsChg = True
-                    self.HiLtPos = self.ChPos
-            elif Evt.key == pygame.K_HOME:
-                self.ChPos = 0
-                if Evt.mod & pygame.KMOD_SHIFT == 0:self.HiLtPos = self.ChPos
-            elif Evt.key == pygame.K_END:
-                self.ChPos = len(self.Txt)
-                if Evt.mod & pygame.KMOD_SHIFT == 0:self.HiLtPos = self.ChPos
-            elif Evt.key == pygame.K_RETURN:
-                if self.Enter is not None: self.Enter(self)
-            elif Evt.key == pygame.K_LEFT:
-                if Evt.mod & pygame.KMOD_CTRL > 0:
-                    self.ChPos = EntryLine.PrevWord(self.Txt, self.ChPos)
-                elif self.ChPos > 0:
-                    if Evt.mod&pygame.KMOD_SHIFT==0 and self.ChPos!=self.HiLtPos:
-                        Start, End = sorted((self.ChPos, self.HiLtPos))
-                        self.ChPos = Start
-                    else: self.ChPos -= 1
-                if Evt.mod & pygame.KMOD_SHIFT == 0:self.HiLtPos = self.ChPos
-            elif Evt.key == pygame.K_RIGHT:
-                if Evt.mod & pygame.KMOD_CTRL > 0:
-                    self.ChPos = EntryLine.NextWord(self.Txt, self.ChPos)
-                elif self.ChPos < len(self.Txt):
-                    if Evt.mod&pygame.KMOD_SHIFT==0 and self.ChPos!=self.HiLtPos:
-                        Start, End = sorted((self.ChPos, self.HiLtPos))
-                        self.ChPos = End
-                    else: self.ChPos += 1
-                if Evt.mod & pygame.KMOD_SHIFT == 0:self.HiLtPos = self.ChPos
-            elif Evt.mod & pygame.KMOD_CTRL > 0:
-                Start, End = sorted((self.ChPos, self.HiLtPos))
-                if Evt.key == pygame.K_v:
-                    Data = None
-                    for Item in ClipBoardTypes:
-                        Data = self.clipboard.get(Item)
-                        if Data is not None: break
-                    if Data is None or not self.OnPreChg(Evt): return False
-                    self.Txt[Start:End] = Data
-                    self.ChPos = Start + len(Data)
-                    self.HiLtPos = self.ChPos
-                    IsChg = True
-                elif Evt.key == pygame.K_c:
-                    self.clipboard.put(pygame.SCRAP_TEXT, u"".join(self.Txt[Start:End]))
-                elif Evt.key == pygame.K_x:
-                    if Start == End or not self.OnPreChg(Evt): return False
-                    self.clipboard.put(pygame.SCRAP_TEXT, u"".join(self.Txt[Start:End]))
-                    self.Txt[Start:End] = []
-                    self.ChPos = Start
-                    self.HiLtPos = Start
-                    IsChg = True
-            elif len(Evt.unicode) > 0:
-                if not self.OnPreChg(Evt): return False
-                Start, End = sorted((self.ChPos, self.HiLtPos))
-                self.Txt[Start:End] = Evt.unicode
-                self.ChPos = Start + 1
-                self.HiLtPos = self.ChPos
-                IsChg = True
-            if IsChg and self.PostChg is not None: self.PostChg(self, Evt)
+                        self.txt.pop(self.ch_pos)
+                    is_chg = True
+                    self.highlight_pos = self.ch_pos
+            elif evt.key == pygame.K_HOME:
+                self.ch_pos = 0
+                if evt.mod & pygame.KMOD_SHIFT == 0:
+                    self.highlight_pos = self.ch_pos
+            elif evt.key == pygame.K_END:
+                self.ch_pos = len(self.txt)
+                if evt.mod & pygame.KMOD_SHIFT == 0:
+                    self.highlight_pos = self.ch_pos
+            elif evt.key == pygame.K_RETURN:
+                if self.enter is not None:
+                    self.enter(self)
+            elif evt.key == pygame.K_LEFT:
+                if evt.mod & pygame.KMOD_CTRL > 0:
+                    self.ch_pos = EntryLine.prev_word(self.txt, self.ch_pos)
+                elif self.ch_pos > 0:
+                    if evt.mod & pygame.KMOD_SHIFT == 0 and self.ch_pos != self.highlight_pos:
+                        start, end = sorted((self.ch_pos, self.highlight_pos))
+                        self.ch_pos = start
+                    else:
+                        self.ch_pos -= 1
+                if evt.mod & pygame.KMOD_SHIFT == 0:
+                    self.highlight_pos = self.ch_pos
+            elif evt.key == pygame.K_RIGHT:
+                if evt.mod & pygame.KMOD_CTRL > 0:
+                    self.ch_pos = EntryLine.next_word(self.txt, self.ch_pos)
+                elif self.ch_pos < len(self.txt):
+                    if evt.mod & pygame.KMOD_SHIFT == 0 and self.ch_pos != self.highlight_pos:
+                        start, end = sorted((self.ch_pos, self.highlight_pos))
+                        self.ch_pos = end
+                    else:
+                        self.ch_pos += 1
+                if evt.mod & pygame.KMOD_SHIFT == 0:
+                    self.highlight_pos = self.ch_pos
+            elif evt.mod & pygame.KMOD_CTRL > 0:
+                start, end = sorted((self.ch_pos, self.highlight_pos))
+                if evt.key == pygame.K_v:
+                    data = None
+                    for Item in clipboard_types:
+                        data = self.clipboard.get(Item)
+                        if data is not None:
+                            break
+                    if data is None or not self.on_pre_chg(evt):
+                        return False
+                    self.txt[start:end] = data
+                    self.ch_pos = start + len(data)
+                    self.highlight_pos = self.ch_pos
+                    is_chg = True
+                elif evt.key == pygame.K_c:
+                    self.clipboard.put(pygame.SCRAP_TEXT, u"".join(self.txt[start:end]))
+                elif evt.key == pygame.K_x:
+                    if start == end or not self.on_pre_chg(evt):
+                        return False
+                    self.clipboard.put(pygame.SCRAP_TEXT, u"".join(self.txt[start:end]))
+                    self.txt[start:end] = []
+                    self.ch_pos = start
+                    self.highlight_pos = start
+                    is_chg = True
+            elif len(evt.unicode) > 0:
+                if not self.on_pre_chg(evt):
+                    return False
+                start, end = sorted((self.ch_pos, self.highlight_pos))
+                self.txt[start:end] = evt.unicode
+                self.ch_pos = start + 1
+                self.highlight_pos = self.ch_pos
+                is_chg = True
+            if is_chg and self.post_chg is not None:
+                self.post_chg(self, evt)
             return True
-        elif Evt.type == EntryLine.CursorTmr:
-            if self.IsSel:
-                self.CursorSt = not self.CursorSt
+        elif evt.type == EntryLine.cursor_timer_event_id:
+            if self.is_selected:
+                self.cursor_state = not self.cursor_state
                 return True
         return False
-    def Draw(self, Surf):
-        DrawTxt = u"".join(self.Txt)
-        if self.Censor is not None: DrawTxt = self.Censor(DrawTxt)
-        Img = None
-        if self.ChPos != self.HiLtPos:
-            Start, End = sorted((self.ChPos, self.HiLtPos))
-            BegW = GetPosInKern(self.Fnt, DrawTxt, Start)
-            EndW = GetPosInKern(self.Fnt, DrawTxt, End)
-            Img = pygame.Surface(self.Fnt.size(DrawTxt), pygame.SRCALPHA)
-            Img.blit(self.Fnt.render(DrawTxt[:Start], True, self.Colors[0]), (0, 0))
-            Img.blit(self.Fnt.render(DrawTxt[Start:End], True, *self.HltCol), (BegW, 0))
-            Img.blit(self.Fnt.render(DrawTxt[End:], True, self.Colors[0]), (EndW, 0))
+
+    def draw(self, app):
+        draw_txt = u"".join(self.txt)
+        if self.censor is not None:
+            draw_txt = self.censor(draw_txt)
+        img = None
+        if self.ch_pos != self.highlight_pos:
+            start, end = sorted((self.ch_pos, self.highlight_pos))
+            begin_w = get_pos_in_kern(self.fnt, draw_txt, start)
+            end_w = get_pos_in_kern(self.fnt, draw_txt, end)
+            img = pygame.Surface(self.fnt.size(draw_txt), pygame.SRCALPHA)
+            img.blit(self.fnt.render(draw_txt[:start], True, self.colors[0]), (0, 0))
+            img.blit(self.fnt.render(draw_txt[start:end], True, *self.highlight_colors), (begin_w, 0))
+            img.blit(self.fnt.render(draw_txt[end:], True, self.colors[0]), (end_w, 0))
         else:
-            Img = self.Fnt.render(DrawTxt, True, self.Colors[0])
-        Rtn = []
-        if len(self.Colors) > 1: Rtn.append(Surf.fill(self.Colors[1], self.CollRect))
-        Rtn.append(Surf.blit(Img, self.Pos))
-        if self.CursorSt:
-            CursX = self.Fnt.size(DrawTxt[:self.ChPos])[0] + self.Pos[0] - 1
-            Rtn.append(Surf.fill(self.Colors[0], pygame.Rect(CursX, self.Pos[1], 2, Img.get_height())))
-        self.PrevRect = Rtn[-1].unionall(Rtn[:-1])
-        return Rtn
-    """def Draw(self, Surf):
-        DrawTxt = u"".join(self.Txt)
-        Img = self.Fnt.render(DrawTxt, True, self.Colors[0])
-        Rtn = []
-        if len(self.Colors) > 1: Rtn.append(Surf.fill(self.Colors[1], self.CollRect))
-        Rtn.append(Surf.blit(Img, self.Pos))
-        if self.CursorSt:
-            CursX = self.Fnt.size(DrawTxt[:self.ChPos])[0] + self.Pos[0] - 1
-            Rtn.append(Surf.fill(self.Colors[0], pygame.Rect(CursX, self.Pos[1], 2, Img.get_height())))
-        self.PrevRect = Rtn[-1].unionall(Rtn[:-1])
-        return Rtn"""
-    def PreDraw(self, Surf):
-        if self.PrevRect is not None:
-            Rtn = Surf.fill(PygCtl.BKGR, self.PrevRect)
-            self.PrevRect = None
-            return [Rtn]
+            img = self.fnt.render(draw_txt, True, self.colors[0])
+        rtn = []
+        if len(self.colors) > 1:
+            rtn.append(surf.fill(self.colors[1], self.coll_rect))
+        rtn.append(surf.blit(img, self.pos))
+        if self.cursor_state:
+            cursor_x = self.fnt.size(draw_txt[:self.ch_pos])[0] + self.pos[0] - 1
+            rtn.append(surf.fill(self.colors[0], pygame.Rect(cursor_x, self.pos[1], 2, img.get_height())))
+        self.prev_rect = rtn[-1].unionall(rtn[:-1])
+        return rtn
+
+    """def draw(self, app):
+        draw_txt = u"".join(self.txt)
+        img = self.fnt.render(draw_txt, True, self.colors[0])
+        rtn = []
+        if len(self.colors) > 1:
+        rtn.append(surf.fill(self.colors[1], self.coll_rect))
+        rtn.append(surf.blit(img, self.pos))
+        if self.cursor_state:
+            cursor_x = self.fnt.size(draw_txt[:self.ch_pos])[0] + self.pos[0] - 1
+            rtn.append(surf.fill(self.colors[0], pygame.Rect(cursor_x, self.pos[1], 2, img.get_height())))
+        self.prev_rect = rtn[-1].unionall(rtn[:-1])
+        return rtn"""
+
+    def pre_draw(self, app):
+        if self.prev_rect is not None:
+            rtn = surf.fill(PygCtl.BKGR, self.prev_rect)
+            self.prev_rect = None
+            return [rtn]
         return []
-    def CollidePt(self, Pt):
-        return self.CollRect.collidepoint(Pt)
+
+    def collide_pt(self, pt):
+        return self.coll_rect.collidepoint(pt)
+
+
 class EntryBox(PygCtl.PygCtl):
-    CursorTmr = pygame.USEREVENT + 1
-    # Cursor Threshhold, the fraction of character width, height
+    cursor_timer_event_id = pygame.USEREVENT + 1
+    # cursor Threshhold, the fraction of character width, height
     #  that represents border between 2 char positions
-    CursTH = (.5, 0.0)
-    Cursor = ((16, 24), (8, 12)) + pygame.cursors.compile((
+    cursor_thresh = (.5, 0.0)
+    cursor = ((16, 24), (8, 12)) + pygame.cursors.compile((
         "                ",
         "                ",
         "                ",
@@ -636,651 +803,763 @@ class EntryBox(PygCtl.PygCtl):
         black='.', white='O', xor='X')
 
     @staticmethod
-    def NextWord(LstTxt, TxtPos):
-        CurTyp = -1
-        for c in xrange(TxtPos, len(LstTxt)):
-            Ch = LstTxt[c]
-            if Ch.isalnum() or Ch == '_':
-                if CurTyp == -1:
-                    CurTyp = 0
-                elif CurTyp != 0:
+    def next_word(lst_txt, txt_pos):
+        cur_type = -1
+        for c in range(txt_pos, len(lst_txt)):
+            ch = lst_txt[c]
+            if ch.isalnum() or ch == '_':
+                if cur_type == -1:
+                    cur_type = 0
+                elif cur_type != 0:
                     return c
-            elif Ch in SymCh:
-                if CurTyp == -1:
-                    CurTyp = 1
-                elif CurTyp != 1:
+            elif ch in SymCh:
+                if cur_type == -1:
+                    cur_type = 1
+                elif cur_type != 1:
                     return c
-            elif Ch.isspace():
-                if CurTyp != -1: return c
+            elif ch.isspace():
+                if cur_type != -1:
+                    return c
             else:
-                if CurTyp == -1:
-                    CurTyp = 2
-                elif CurTyp != 2:
+                if cur_type == -1:
+                    cur_type = 2
+                elif cur_type != 2:
                     return c
-        return len(LstTxt)
+        return len(lst_txt)
 
     @staticmethod
-    def PrevWord(LstTxt, TxtPos):
-        CurTyp = -1
-        for c in xrange(TxtPos, 0, -1):
-            Ch = LstTxt[c - 1]
-            if Ch.isalnum() or Ch == '_':
-                if CurTyp == -1:
-                    CurTyp = 0
-                elif CurTyp != 0:
+    def prev_word(lst_txt, txt_pos):
+        cur_type = -1
+        for c in range(txt_pos, 0, -1):
+            ch = lst_txt[c - 1]
+            if ch.isalnum() or ch == '_':
+                if cur_type == -1:
+                    cur_type = 0
+                elif cur_type != 0:
                     return c
-            elif Ch in SymCh:
-                if CurTyp == -1:
-                    CurTyp = 1
-                elif CurTyp != 1:
+            elif ch in SymCh:
+                if cur_type == -1:
+                    cur_type = 1
+                elif cur_type != 1:
                     return c
-            elif Ch.isspace():
-                if CurTyp != -1: return c
+            elif ch.isspace():
+                if cur_type != -1:
+                    return c
             else:
-                if CurTyp == -1:
-                    CurTyp = 2
-                elif CurTyp != 2:
+                if cur_type == -1:
+                    cur_type = 2
+                elif cur_type != 2:
                     return c
         return 0
 
     @classmethod
-    def InitTimer(cls, EvtCode=None):
-        if EvtCode is not None: cls.CursorTmr = EvtCode
-        pygame.time.set_timer(cls.CursorTmr, 500)
-        cls.clipboard = PyperClipboard() # PygClipboard()
+    def init_timer(cls, evt_code=None):
+        if evt_code is not None:
+            cls.cursor_timer_event_id = evt_code
+        pygame.time.set_timer(cls.cursor_timer_event_id, 500)
+        cls.clipboard = PyperClipboard()  # PygClipboard()
 
-    def __init__(self, Fnt, Pos, Size, Colors, PreChg=None, PostChg=None, Enter=None, DefTxt="", Censor=None):
-        self.LineSep = "\n"
-        self.Colors = Colors
-        self.HltCol = [(255, 255, 255), (51, 143, 255)]
-        self.Pos = Pos
-        self.Size = Size
-        self.PreChg = PreChg
-        self.PostChg = PostChg
-        self.Enter = Enter
-        self.Censor = Censor
-        self.IsSel = False
-        self.HiLite = False
-        self.HiLtPos = [0, 0]
-        self.Txt = TextLineView(DefTxt, self.LineSep)
-        self.ChPos = [0, 0]
-        self.ChOff = 0  # x offset in pixels
-        self.CurKey = None
-        self.CollRect = pygame.rect.Rect(self.Pos, self.Size)
-        self.PrevRect = self.CollRect
-        self.Fnt = Fnt
-        self.CursorSt = True
-        self.CursCol = None
-        self.LineH = Fnt.get_linesize()
-        self.OldCursor = None
-    def SetSize(self, Size):
-        self.Size = Size
-        self.CollRect = pygame.rect.Rect(self.Pos, self.Size)
-    def SetPos(self, Pos):
-        self.Pos = Pos
-        self.CollRect = pygame.rect.Rect(self.Pos, self.Size)
-    def SetPosSize(self, Pos, Size):
-        self.Pos = Pos
-        self.Size = Size
-        self.CollRect = pygame.rect.Rect(self.Pos, self.Size)
-    def OnEvt(self, Evt, Pos):
-        if Evt.type == pygame.MOUSEBUTTONDOWN:
-            self.HiLite = True
-            self.IsSel = True
-            Pos = [Pos[0] - self.Pos[0], Pos[1] - self.Pos[1]]
-            if Pos[0] < 0: Pos[0] = 0
-            if Pos[1] < 0: Pos[1] = 0
-            CTHx, CTHy = EntryBox.CursTH
-            ChRow = max(0, min(int(Pos[1] / self.LineH +CTHy), len(self.Txt.Lines)-1))
-            DrawTxt = self.Txt.GetDrawRow(ChRow)
-            if self.Censor is not None: DrawTxt = self.Censor(DrawTxt)
-            GetSzTxt = lambda x: self.Fnt.size(DrawTxt[:x])[0]
-            LstV = FuncListView(GetSzTxt, len(DrawTxt))
-            # since LstV[0] == 0 and Pos[0] >= 0 is True, result->ChPos >= 1
-            ChCol = BinaryApprox(LstV, Pos[0])
-            if ChCol < len(LstV):
-                OffX = LstV[ChCol - 1]
-                ChW = LstV[ChCol] - OffX
-                if Pos[0] - OffX <= CTHx * ChW: ChCol -= 1
-            self.ChPos = [ChCol, ChRow]
-            self.HiLtPos = [ChCol, ChRow]
+    def __init__(self, fnt, pos, size, colors, pre_chg=None, post_chg=None, enter=None, default_text="", censor=None):
+        self.line_sep = "\n"
+        self.colors = colors
+        self.highlight_colors = [(255, 255, 255), (51, 143, 255)]
+        self.pos = pos
+        self.size = size
+        self.pre_chg = pre_chg
+        self.post_chg = post_chg
+        self.enter = enter
+        self.censor = censor
+        self.is_selected = False
+        self.highlight = False
+        self.highlight_pos = [0, 0]
+        self.txt = TextLineView(default_text, self.line_sep)
+        self.ch_pos = [0, 0]
+        self.ch_off = 0  # x offset in pixels
+        self.cur_key = None
+        self.coll_rect = pygame.rect.Rect(self.pos, self.size)
+        self.prev_rect = self.coll_rect
+        self.fnt = fnt
+        self.cursor_state = True
+        self.cursor_col = None
+        self.line_h = fnt.get_linesize()
+        self.old_cursor = None
+
+    def set_size(self, size):
+        self.size = size
+        self.coll_rect = pygame.rect.Rect(self.pos, self.size)
+
+    def set_pos(self, pos):
+        self.pos = pos
+        self.coll_rect = pygame.rect.Rect(self.pos, self.size)
+
+    def set_pos_size(self, pos, size):
+        self.pos = pos
+        self.size = size
+        self.coll_rect = pygame.rect.Rect(self.pos, self.size)
+
+    def on_evt(self, app, evt, pos):
+        if evt.type == pygame.MOUSEBUTTONDOWN:
+            self.highlight = True
+            self.is_selected = True
+            pos = [pos[0] - self.pos[0], pos[1] - self.pos[1]]
+            if pos[0] < 0:
+                pos[0] = 0
+            if pos[1] < 0:
+                pos[1] = 0
+            cursor_thresh_x, cursor_thresh_y = EntryBox.cursor_thresh
+            ch_row = max(0, min(int(pos[1] / self.line_h + cursor_thresh_y), len(self.txt.Lines) - 1))
+            draw_txt = self.txt.get_draw_row(ch_row)
+            if self.censor is not None:
+                draw_txt = self.censor(draw_txt)
+            get_size_text = lambda x: \
+                self.fnt.size(draw_txt[:x])[0]
+            lst_v = FuncListView(get_size_text, len(draw_txt))
+            # since lst_v[0] == 0 and pos[0] >= 0 is True, result->ch_pos >= 1
+            ch_col = binary_approx(lst_v, pos[0])
+            if ch_col < len(lst_v):
+                off_x = lst_v[ch_col - 1]
+                ch_w = lst_v[ch_col] - off_x
+                if pos[0] - off_x <= cursor_thresh_x * ch_w:
+                    ch_col -= 1
+            self.ch_pos = [ch_col, ch_row]
+            self.highlight_pos = [ch_col, ch_row]
             return True
         return False
 
-    def OnPreChg(self, Evt):
-        return self.PreChg is None or self.PreChg(self, Evt)
-    def OnMouseEnter(self):
-        if pygame.mouse.get_cursor() != self.Cursor:
-            self.OldCursor = pygame.mouse.get_cursor()
-            pygame.mouse.set_cursor(*self.Cursor)
-        super(EntryBox, self).OnMouseEnter()
-    def OnMouseExit(self):
-        if self.OldCursor is not None:
-            pygame.mouse.set_cursor(*self.OldCursor)
-            self.OldCursor = None
-        super(EntryBox, self).OnMouseExit()
+    def on_pre_chg(self, evt):
+        return self.pre_chg is None or self.pre_chg(self, evt)
 
-    def OnEvtGlobal(self, Evt):
-        if Evt.type == pygame.MOUSEBUTTONDOWN:
-            if self.CollRect.collidepoint(Evt.pos): return False
-            if self.HiLite or self.IsSel:
-                self.HiLite = False
-                self.IsSel = False
-        elif Evt.type == pygame.MOUSEBUTTONUP:
-            if self.HiLite: self.HiLite = False
-        elif Evt.type == pygame.MOUSEMOTION and self.HiLite:
-            Pos = Evt.pos
-            Pos = [Pos[0] - self.Pos[0], Pos[1] - self.Pos[1]]
-            if Pos[0] < 0: Pos[0] = 0
-            if Pos[1] < 0: Pos[1] = 0
-            CTHx, CTHy = EntryBox.CursTH
-            ChRow = max(0, min(int(Pos[1] / self.LineH + CTHy), len(self.Txt.Lines)-1))
-            DrawTxt = self.Txt.GetDrawRow(ChRow)
-            if self.Censor is not None: DrawTxt = self.Censor(DrawTxt)
-            GetSzTxt = lambda x: self.Fnt.size(DrawTxt[:x])[0]
-            LstV = FuncListView(GetSzTxt, len(DrawTxt))
-            # since LstV[0] == 0 and Pos[0] >= 0 is True, result->ChPos >= 1
-            ChCol = BinaryApprox(LstV, Pos[0])
-            if ChCol < len(LstV):
-                OffX = LstV[ChCol - 1]
-                ChW = LstV[ChCol] - OffX
-                if Pos[0] - OffX <= CTHx * ChW: ChCol -= 1
-            self.ChPos = [ChCol, ChRow]
+    def on_mouse_enter(self):
+        if pygame.mouse.get_cursor() != self.cursor:
+            self.old_cursor = pygame.mouse.get_cursor()
+            pygame.mouse.set_cursor(*self.cursor)
+        return super(EntryBox, self).on_mouse_enter()
+
+    def on_mouse_exit(self):
+        if self.old_cursor is not None:
+            pygame.mouse.set_cursor(*self.old_cursor)
+            self.old_cursor = None
+        return super(EntryBox, self).on_mouse_exit()
+
+    def on_evt_global(self, app, evt):
+        if evt.type == pygame.MOUSEBUTTONDOWN:
+            if self.coll_rect.collidepoint(evt.pos):
+                return False
+            if self.highlight or self.is_selected:
+                self.highlight = False
+                self.is_selected = False
+        elif evt.type == pygame.MOUSEBUTTONUP:
+            if self.highlight:
+                self.highlight = False
+        elif evt.type == pygame.MOUSEMOTION and self.highlight:
+            pos = evt.pos
+            pos = [pos[0] - self.pos[0], pos[1] - self.pos[1]]
+            if pos[0] < 0:
+                pos[0] = 0
+            if pos[1] < 0:
+                pos[1] = 0
+            cursor_thresh_x, cursor_thresh_y = EntryBox.cursor_thresh
+            ch_row = max(0, min(int(pos[1] / self.line_h + cursor_thresh_y), len(self.txt.Lines) - 1))
+            draw_txt = self.txt.get_draw_row(ch_row)
+            if self.censor is not None:
+                draw_txt = self.censor(draw_txt)
+            get_size_text = lambda x: \
+                self.fnt.size(draw_txt[:x])[0]
+            lst_v = FuncListView(get_size_text, len(draw_txt))
+            # since lst_v[0] == 0 and pos[0] >= 0 is True, result->ch_pos >= 1
+            ch_col = binary_approx(lst_v, pos[0])
+            if ch_col < len(lst_v):
+                off_x = lst_v[ch_col - 1]
+                ch_w = lst_v[ch_col] - off_x
+                if pos[0] - off_x <= cursor_thresh_x * ch_w:
+                    ch_col -= 1
+            self.ch_pos = [ch_col, ch_row]
             return True
-        elif Evt.type == pygame.KEYDOWN and self.IsSel:
-            IsChg = False
-            ChPos = self.Txt.RowColToPos(*self.ChPos)
-            ColChg = True
-            if Evt.key == pygame.K_BACKSPACE:
-                if ChPos == 0 and self.ChPos == self.HiLtPos or not self.OnPreChg(Evt):
+        elif evt.type == pygame.KEYDOWN and self.is_selected:
+            is_chg = False
+            ch_pos = self.txt.row_col_to_pos(*self.ch_pos)
+            col_chg = True
+            if evt.key == pygame.K_BACKSPACE:
+                if ch_pos == 0 and self.ch_pos == self.highlight_pos or not self.on_pre_chg(evt):
                     return False
-                elif Evt.mod & pygame.KMOD_CTRL > 0:
-                    Start = EntryLine.PrevWord(self.Txt.Str, ChPos)
-                    Off = ChPos - Start
-                    HiLtPos = self.Txt.RowColToPos(*self.HiLtPos)
-                    self.Txt.Delete(Start,ChPos)
-                    if HiLtPos >= ChPos:
-                        HiLtPos -= Off
-                    elif HiLtPos > ChPos - Off:
-                        HiLtPos = ChPos
-                    ChPos = Start
-                    self.ChPos = self.Txt.PosToRowCol(ChPos)
-                    self.HiLtPos = self.Txt.PosToRowCol(HiLtPos)
-                    IsChg = True
+                elif evt.mod & pygame.KMOD_CTRL > 0:
+                    start = EntryLine.prev_word(self.txt.Str, ch_pos)
+                    off = ch_pos - start
+                    highlight_pos = self.txt.row_col_to_pos(*self.highlight_pos)
+                    self.txt.Delete(start, ch_pos)
+                    if highlight_pos >= ch_pos:
+                        highlight_pos -= off
+                    elif highlight_pos > ch_pos - off:
+                        highlight_pos = ch_pos
+                    ch_pos = start
+                    self.ch_pos = self.txt.pos_to_row_col(ch_pos)
+                    self.highlight_pos = self.txt.pos_to_row_col(highlight_pos)
+                    is_chg = True
                 else:
-                    if self.ChPos != self.HiLtPos:
-                        Start, End = sorted((ChPos, self.Txt.RowColToPos(*self.HiLtPos)))
-                        self.Txt.Delete(Start, End)
-                        self.ChPos = self.Txt.PosToRowCol(Start)
-                        IsChg = True
+                    if self.ch_pos != self.highlight_pos:
+                        start, end = sorted((ch_pos, self.txt.row_col_to_pos(*self.highlight_pos)))
+                        self.txt.Delete(start, end)
+                        self.ch_pos = self.txt.pos_to_row_col(start)
+                        is_chg = True
                     else:
-                        if ChPos > 0:
-                            self.Txt.Delete(ChPos-1, ChPos)
-                            self.ChPos = self.Txt.PosToRowCol(ChPos-1)
-                            IsChg = True
-                    self.HiLtPos = list(self.ChPos)
-            elif Evt.key == pygame.K_DELETE:
-                if (ChPos >= len(self.Txt.Str) and self.ChPos == self.HiLtPos) or not self.OnPreChg(Evt):
+                        if ch_pos > 0:
+                            self.txt.Delete(ch_pos - 1, ch_pos)
+                            self.ch_pos = self.txt.pos_to_row_col(ch_pos - 1)
+                            is_chg = True
+                    self.highlight_pos = list(self.ch_pos)
+            elif evt.key == pygame.K_DELETE:
+                if (ch_pos >= len(self.txt.Str) and self.ch_pos == self.highlight_pos) or not self.on_pre_chg(evt):
                     return False
-                elif Evt.mod & pygame.KMOD_CTRL > 0:
-                    End = EntryLine.NextWord(self.Txt.Str, ChPos)
-                    Off = End - ChPos
-                    HiLtPos = self.Txt.RowColToPos(*self.HiLtPos)
-                    self.Txt.Delete(ChPos,End)
-                    if HiLtPos > ChPos:
-                        self.HiLtPos = self.Txt.PosToRowCol(max(HiLtPos - Off, ChPos))
-                    IsChg = True
+                elif evt.mod & pygame.KMOD_CTRL > 0:
+                    end = EntryLine.next_word(self.txt.Str, ch_pos)
+                    off = end - ch_pos
+                    highlight_pos = self.txt.row_col_to_pos(*self.highlight_pos)
+                    self.txt.Delete(ch_pos, end)
+                    if highlight_pos > ch_pos:
+                        self.highlight_pos = self.txt.pos_to_row_col(max(highlight_pos - off, ch_pos))
+                    is_chg = True
                 else:
-                    if self.ChPos != self.HiLtPos:
-                        Start, End = sorted((ChPos, self.Txt.RowColToPos(*self.HiLtPos)))
-                        self.Txt.Delete(Start, End)
-                        self.ChPos = self.Txt.PosToRowCol(Start)
-                        IsChg = True
+                    if self.ch_pos != self.highlight_pos:
+                        start, end = sorted((ch_pos, self.txt.row_col_to_pos(*self.highlight_pos)))
+                        self.txt.Delete(start, end)
+                        self.ch_pos = self.txt.pos_to_row_col(start)
+                        is_chg = True
                     else:
-                        if ChPos < len(self.Txt.Str):
-                            self.Txt.Delete(ChPos, ChPos+1)
-                            IsChg = True
-                    self.HiLtPos = list(self.ChPos)
-            elif Evt.key == pygame.K_HOME:
-                if Evt.mod & pygame.KMOD_CTRL > 0:
-                    self.ChPos[1] = 0
-                self.ChPos[0] = 0
-                if Evt.mod & pygame.KMOD_SHIFT == 0: self.HiLtPos = list(self.ChPos)
-            elif Evt.key == pygame.K_END:
-                if Evt.mod & pygame.KMOD_CTRL > 0:
-                    self.ChPos[1] = len(self.Txt.Lines) - 1
-                self.ChPos[0] = self.Txt.GetDrawRowLen(self.ChPos[1])
-                if Evt.mod & pygame.KMOD_SHIFT == 0: self.HiLtPos = list(self.ChPos)
-            elif Evt.key == pygame.K_RETURN:
-                #if self.Enter is not None: self.Enter(self)
-                self.Txt.Replace(self.LineSep, *sorted([ChPos, self.Txt.tRowColToPos(self.HiLtPos)]))
-                self.ChPos[0] = 0
-                self.ChPos[1] += 1
-                IsChg = True
-                self.HiLtPos = list(self.ChPos)
-            elif Evt.key == pygame.K_LEFT:
-                if Evt.mod & pygame.KMOD_CTRL > 0:
-                    self.ChPos = self.Txt.PosToRowCol(EntryLine.PrevWord(self.Txt.Str, ChPos))
-                elif ChPos > 0:
-                    if Evt.mod & pygame.KMOD_SHIFT == 0 and self.ChPos != self.HiLtPos:
-                        Start, End = sorted((ChPos, self.Txt.RowColToPos(*self.HiLtPos)))
-                        self.ChPos = self.Txt.PosToRowCol(Start)
+                        if ch_pos < len(self.txt.Str):
+                            self.txt.Delete(ch_pos, ch_pos + 1)
+                            is_chg = True
+                    self.highlight_pos = list(self.ch_pos)
+            elif evt.key == pygame.K_HOME:
+                if evt.mod & pygame.KMOD_CTRL > 0:
+                    self.ch_pos[1] = 0
+                self.ch_pos[0] = 0
+                if evt.mod & pygame.KMOD_SHIFT == 0:
+                    self.highlight_pos = list(self.ch_pos)
+            elif evt.key == pygame.K_END:
+                if evt.mod & pygame.KMOD_CTRL > 0:
+                    self.ch_pos[1] = len(self.txt.Lines) - 1
+                self.ch_pos[0] = self.txt.get_draw_row_len(self.ch_pos[1])
+                if evt.mod & pygame.KMOD_SHIFT == 0:
+                    self.highlight_pos = list(self.ch_pos)
+            elif evt.key == pygame.K_RETURN:
+                # if self.enter is not None:
+                # self.enter(self)
+                self.txt.replace(self.line_sep, *sorted([ch_pos, self.txt.t_row_col_to_pos(self.highlight_pos)]))
+                self.ch_pos[0] = 0
+                self.ch_pos[1] += 1
+                is_chg = True
+                self.highlight_pos = list(self.ch_pos)
+            elif evt.key == pygame.K_LEFT:
+                if evt.mod & pygame.KMOD_CTRL > 0:
+                    self.ch_pos = self.txt.pos_to_row_col(EntryLine.prev_word(self.txt.Str, ch_pos))
+                elif ch_pos > 0:
+                    if evt.mod & pygame.KMOD_SHIFT == 0 and self.ch_pos != self.highlight_pos:
+                        start, end = sorted((ch_pos, self.txt.row_col_to_pos(*self.highlight_pos)))
+                        self.ch_pos = self.txt.pos_to_row_col(start)
                     else:
-                        self.ChPos = self.Txt.PosToRowCol(ChPos-1)
-                if Evt.mod & pygame.KMOD_SHIFT == 0: self.HiLtPos = list(self.ChPos)
-            elif Evt.key == pygame.K_RIGHT:
-                if Evt.mod & pygame.KMOD_CTRL > 0:
-                    self.ChPos = self.Txt.PosToRowCol(EntryLine.NextWord(self.Txt.Str, ChPos))
-                elif ChPos < len(self.Txt.Str):
-                    if Evt.mod & pygame.KMOD_SHIFT == 0 and self.ChPos != self.HiLtPos:
-                        Start, End = sorted((ChPos, self.Txt.RowColToPos(*self.HiLtPos)))
-                        self.ChPos = self.Txt.PosToRowCol(End)
+                        self.ch_pos = self.txt.pos_to_row_col(ch_pos - 1)
+                if evt.mod & pygame.KMOD_SHIFT == 0:
+                    self.highlight_pos = list(self.ch_pos)
+            elif evt.key == pygame.K_RIGHT:
+                if evt.mod & pygame.KMOD_CTRL > 0:
+                    self.ch_pos = self.txt.pos_to_row_col(EntryLine.next_word(self.txt.Str, ch_pos))
+                elif ch_pos < len(self.txt.Str):
+                    if evt.mod & pygame.KMOD_SHIFT == 0 and self.ch_pos != self.highlight_pos:
+                        start, end = sorted((ch_pos, self.txt.row_col_to_pos(*self.highlight_pos)))
+                        self.ch_pos = self.txt.pos_to_row_col(end)
                     else:
-                        self.ChPos = self.Txt.PosToRowCol(ChPos+1)
-                if Evt.mod & pygame.KMOD_SHIFT == 0: self.HiLtPos = list(self.ChPos)
-            elif Evt.key == pygame.K_UP:
-                if self.ChPos[1] > 0: self.ChPos[1] -= 1
-                if self.CursCol is not None:
-                    self.ChPos[0] = self.CursCol
+                        self.ch_pos = self.txt.pos_to_row_col(ch_pos + 1)
+                if evt.mod & pygame.KMOD_SHIFT == 0:
+                    self.highlight_pos = list(self.ch_pos)
+            elif evt.key == pygame.K_UP:
+                if self.ch_pos[1] > 0:
+                    self.ch_pos[1] -= 1
+                if self.cursor_col is not None:
+                    self.ch_pos[0] = self.cursor_col
                 else:
-                    self.CursCol = self.ChPos[0]
-                if self.ChPos[0] > self.Txt.GetDrawRowLen(self.ChPos[1]):
-                    self.ChPos[0] = self.Txt.GetDrawRowLen(self.ChPos[1])
-                if Evt.mod & pygame.KMOD_SHIFT == 0: self.HiLtPos = list(self.ChPos)
-                ColChg = False
-            elif Evt.key == pygame.K_DOWN:
-                if self.ChPos[1]+1 < len(self.Txt.Lines): self.ChPos[1] += 1
-                if self.CursCol is not None:
-                    self.ChPos[0] = self.CursCol
+                    self.cursor_col = self.ch_pos[0]
+                if self.ch_pos[0] > self.txt.get_draw_row_len(self.ch_pos[1]):
+                    self.ch_pos[0] = self.txt.get_draw_row_len(self.ch_pos[1])
+                if evt.mod & pygame.KMOD_SHIFT == 0:
+                    self.highlight_pos = list(self.ch_pos)
+                col_chg = False
+            elif evt.key == pygame.K_DOWN:
+                if self.ch_pos[1] + 1 < len(self.txt.Lines):
+                    self.ch_pos[1] += 1
+                if self.cursor_col is not None:
+                    self.ch_pos[0] = self.cursor_col
                 else:
-                    self.CursCol = self.ChPos[0]
-                if self.ChPos[0] > self.Txt.GetDrawRowLen(self.ChPos[1]):
-                    self.ChPos[0] = self.Txt.GetDrawRowLen(self.ChPos[1])
-                if Evt.mod & pygame.KMOD_SHIFT == 0: self.HiLtPos = list(self.ChPos)
-                ColChg = False
-            elif Evt.mod & pygame.KMOD_CTRL > 0:
-                Start, End = sorted((ChPos, self.Txt.RowColToPos(*self.HiLtPos)))
-                if Evt.key == pygame.K_v:
-                    Data = None
-                    for Item in ClipBoardTypes:
-                        Data = self.clipboard.get(Item)
-                        if Data is not None: break
-                    if Data is None or not self.OnPreChg(Evt): return False
-                    self.Txt.Replace(Data,Start,End)
-                    self.ChPos = self.Txt.PosToRowCol(Start + len(Data))
-                    self.HiLtPos = list(self.ChPos)
-                    IsChg = True
-                elif Evt.key == pygame.K_c:
-                    self.clipboard.put(pygame.SCRAP_TEXT, self.Txt.GetStr(Start,End))
-                elif Evt.key == pygame.K_x:
-                    if Start == End or not self.OnPreChg(Evt): return False
-                    self.clipboard.put(pygame.SCRAP_TEXT, self.Txt.GetStr(Start,End))
-                    self.Txt.Delete(Start,End)
-                    self.ChPos = self.Txt.PosToRowCol(Start)
-                    self.HiLtPos = self.Txt.PosToRowCol(Start)
-                    IsChg = True
-            elif len(Evt.unicode) > 0:
-                if not self.OnPreChg(Evt): return False
-                Start, End = sorted((ChPos, self.Txt.RowColToPos(*self.HiLtPos)))
-                self.Txt.Replace(Evt.unicode, Start, End)
-                self.ChPos = self.Txt.PosToRowCol(Start + 1)
-                self.HiLtPos = list(self.ChPos)
-                IsChg = True
-            if ColChg:
-                self.CursCol = None
-            if IsChg and self.PostChg is not None: self.PostChg(self, Evt)
+                    self.cursor_col = self.ch_pos[0]
+                if self.ch_pos[0] > self.txt.get_draw_row_len(self.ch_pos[1]):
+                    self.ch_pos[0] = self.txt.get_draw_row_len(self.ch_pos[1])
+                if evt.mod & pygame.KMOD_SHIFT == 0:
+                    self.highlight_pos = list(self.ch_pos)
+                col_chg = False
+            elif evt.mod & pygame.KMOD_CTRL > 0:
+                start, end = sorted((ch_pos, self.txt.row_col_to_pos(*self.highlight_pos)))
+                if evt.key == pygame.K_v:
+                    data = None
+                    for Item in clipboard_types:
+                        data = self.clipboard.get(Item)
+                        if data is not None:
+                            break
+                    if data is None or not self.on_pre_chg(evt):
+                        return False
+                    self.txt.replace(data, start, end)
+                    self.ch_pos = self.txt.pos_to_row_col(start + len(data))
+                    self.highlight_pos = list(self.ch_pos)
+                    is_chg = True
+                elif evt.key == pygame.K_c:
+                    self.clipboard.put(pygame.SCRAP_TEXT, self.txt.GetStr(start, end))
+                elif evt.key == pygame.K_x:
+                    if start == end or not self.on_pre_chg(evt):
+                        return False
+                    self.clipboard.put(pygame.SCRAP_TEXT, self.txt.GetStr(start, end))
+                    self.txt.Delete(start, end)
+                    self.ch_pos = self.txt.pos_to_row_col(start)
+                    self.highlight_pos = self.txt.pos_to_row_col(start)
+                    is_chg = True
+            elif len(evt.unicode) > 0:
+                if not self.on_pre_chg(evt):
+                    return False
+                start, end = sorted((ch_pos, self.txt.row_col_to_pos(*self.highlight_pos)))
+                self.txt.replace(evt.unicode, start, end)
+                self.ch_pos = self.txt.pos_to_row_col(start + 1)
+                self.highlight_pos = list(self.ch_pos)
+                is_chg = True
+            if col_chg:
+                self.cursor_col = None
+            if is_chg and self.post_chg is not None:
+                self.post_chg(self, evt)
             return True
-        elif Evt.type == EntryBox.CursorTmr:
-            if self.IsSel:
-                self.CursorSt = not self.CursorSt
+        elif evt.type == EntryBox.cursor_timer_event_id:
+            if self.is_selected:
+                self.cursor_state = not self.cursor_state
                 return True
         return False
-    def Draw(self, Surf):
-        Start, End = map(self.Txt.PosToRowCol, sorted(map(self.Txt.tRowColToPos, [self.ChPos, self.HiLtPos])))
-        Rtn = [None]*len(self.Txt.Lines)
-        if len(self.Colors) > 1:
-            Rtn.append(Surf.fill(self.Colors[1], self.CollRect))
-        for c in xrange(0, Start[1]):
-            DrawTxt = self.Txt.GetDrawRow(c)
-            if self.Censor is not None: DrawTxt = self.Censor(DrawTxt)
-            Img = self.Fnt.render(DrawTxt, True, self.Colors[0])
-            Rtn[c] = Surf.blit(Img, (self.Pos[0], self.Pos[1]+self.LineH*c))
-        if Start == End:
-            c = Start[1]
-            DrawTxt = self.Txt.GetDrawRow(c)
-            if self.Censor is not None: DrawTxt = self.Censor(DrawTxt)
-            Img = self.Fnt.render(DrawTxt, True, self.Colors[0])
-            Rtn[c] = Surf.blit(Img, (self.Pos[0], self.Pos[1]+self.LineH*c))
-        elif Start[1] == End[1]:
-            c = Start[1]
-            DrawTxt = self.Txt.GetDrawRow(c)
-            if self.Censor is not None: DrawTxt = self.Censor(DrawTxt)
-            BegW = GetPosInKern(self.Fnt, DrawTxt, Start[0])
-            EndW = GetPosInKern(self.Fnt, DrawTxt, End[0])
-            Img = pygame.Surface(self.Fnt.size(DrawTxt), pygame.SRCALPHA)
-            Img.blit(self.Fnt.render(DrawTxt[:Start[0]], True, self.Colors[0]), (0, 0))
-            Img.blit(self.Fnt.render(DrawTxt[Start[0]:End[0]], True, *self.HltCol), (BegW, 0))
-            Img.blit(self.Fnt.render(DrawTxt[End[0]:], True, self.Colors[0]), (EndW, 0))
-            Rtn[c] = Surf.blit(Img, (self.Pos[0], self.Pos[1]+self.LineH*c))
+
+    def draw(self, app):
+        start, end = map(self.txt.pos_to_row_col,
+                         sorted(map(self.txt.t_row_col_to_pos, [self.ch_pos, self.highlight_pos])))
+        rtn = [None] * len(self.txt.Lines)
+        if len(self.colors) > 1:
+            rtn.append(surf.fill(self.colors[1], self.coll_rect))
+        for c in range(0, start[1]):
+            draw_txt = self.txt.get_draw_row(c)
+            if self.censor is not None:
+                draw_txt = self.censor(draw_txt)
+            img = self.fnt.render(draw_txt, True, self.colors[0])
+            rtn[c] = surf.blit(img, (self.pos[0], self.pos[1] + self.line_h * c))
+        if start == end:
+            c = start[1]
+            draw_txt = self.txt.get_draw_row(c)
+            if self.censor is not None:
+                draw_txt = self.censor(draw_txt)
+            img = self.fnt.render(draw_txt, True, self.colors[0])
+            rtn[c] = surf.blit(img, (self.pos[0], self.pos[1] + self.line_h * c))
+        elif start[1] == end[1]:
+            c = start[1]
+            draw_txt = self.txt.get_draw_row(c)
+            if self.censor is not None:
+                draw_txt = self.censor(draw_txt)
+            begin_w = get_pos_in_kern(self.fnt, draw_txt, start[0])
+            end_w = get_pos_in_kern(self.fnt, draw_txt, end[0])
+            img = pygame.Surface(self.fnt.size(draw_txt), pygame.SRCALPHA)
+            img.blit(self.fnt.render(draw_txt[:start[0]], True, self.colors[0]), (0, 0))
+            img.blit(self.fnt.render(draw_txt[start[0]:end[0]], True, *self.highlight_colors), (begin_w, 0))
+            img.blit(self.fnt.render(draw_txt[end[0]:], True, self.colors[0]), (end_w, 0))
+            rtn[c] = surf.blit(img, (self.pos[0], self.pos[1] + self.line_h * c))
         else:
-            c = Start[1]
-            DrawTxt = self.Txt.GetDrawRow(c)
-            if self.Censor is not None: DrawTxt = self.Censor(DrawTxt)
-            BegW = GetPosInKern(self.Fnt, DrawTxt, Start[0])
-            Img = pygame.Surface(self.Fnt.size(DrawTxt), pygame.SRCALPHA)
-            Img.blit(self.Fnt.render(DrawTxt[:Start[0]], True, self.Colors[0]), (0, 0))
-            Img.blit(self.Fnt.render(DrawTxt[Start[0]:], True, *self.HltCol), (BegW, 0))
-            Rtn[c] = Surf.blit(Img, (self.Pos[0], self.Pos[1] + self.LineH * c))
-            c = End[1]
-            DrawTxt = self.Txt.GetDrawRow(c)
-            if self.Censor is not None: DrawTxt = self.Censor(DrawTxt)
-            EndW = GetPosInKern(self.Fnt, DrawTxt, End[0])
-            Img = pygame.Surface(self.Fnt.size(DrawTxt), pygame.SRCALPHA)
-            Img.blit(self.Fnt.render(DrawTxt[:End[0]], True, *self.HltCol), (0, 0))
-            Img.blit(self.Fnt.render(DrawTxt[End[0]:], True, self.Colors[0]), (EndW, 0))
-            Rtn[c] = Surf.blit(Img, (self.Pos[0], self.Pos[1] + self.LineH * c))
-        for c in xrange(Start[1]+1, End[1]):
-            DrawTxt = self.Txt.GetDrawRow(c)
-            if self.Censor is not None: DrawTxt = self.Censor(DrawTxt)
-            Img = self.Fnt.render(DrawTxt, True, *self.HltCol)
-            Rtn[c] = Surf.blit(Img, (self.Pos[0], self.Pos[1]+self.LineH*c))
-        for c in xrange(End[1]+1, len(self.Txt.Lines)):
-            DrawTxt = self.Txt.GetDrawRow(c)
-            if self.Censor is not None: DrawTxt = self.Censor(DrawTxt)
-            Img = self.Fnt.render(DrawTxt, True, self.Colors[0])
-            Rtn[c] = Surf.blit(Img, (self.Pos[0], self.Pos[1] + self.LineH * c))
-        if self.CursorSt:
-            c = self.ChPos[1]
-            DrawTxt = self.Txt.GetDrawRow(c)
-            if self.Censor is not None: DrawTxt = self.Censor(DrawTxt)
+            c = start[1]
+            draw_txt = self.txt.get_draw_row(c)
+            if self.censor is not None:
+                draw_txt = self.censor(draw_txt)
+            begin_w = get_pos_in_kern(self.fnt, draw_txt, start[0])
+            img = pygame.Surface(self.fnt.size(draw_txt), pygame.SRCALPHA)
+            img.blit(self.fnt.render(draw_txt[:start[0]], True, self.colors[0]), (0, 0))
+            img.blit(self.fnt.render(draw_txt[start[0]:], True, *self.highlight_colors), (begin_w, 0))
+            rtn[c] = surf.blit(img, (self.pos[0], self.pos[1] + self.line_h * c))
+            c = end[1]
+            draw_txt = self.txt.get_draw_row(c)
+            if self.censor is not None:
+                draw_txt = self.censor(draw_txt)
+            end_w = get_pos_in_kern(self.fnt, draw_txt, end[0])
+            img = pygame.Surface(self.fnt.size(draw_txt), pygame.SRCALPHA)
+            img.blit(self.fnt.render(draw_txt[:end[0]], True, *self.highlight_colors), (0, 0))
+            img.blit(self.fnt.render(draw_txt[end[0]:], True, self.colors[0]), (end_w, 0))
+            rtn[c] = surf.blit(img, (self.pos[0], self.pos[1] + self.line_h * c))
+        for c in range(start[1] + 1, end[1]):
+            draw_txt = self.txt.get_draw_row(c)
+            if self.censor is not None:
+                draw_txt = self.censor(draw_txt)
+            img = self.fnt.render(draw_txt, True, *self.highlight_colors)
+            rtn[c] = surf.blit(img, (self.pos[0], self.pos[1] + self.line_h * c))
+        for c in range(end[1] + 1, len(self.txt.Lines)):
+            draw_txt = self.txt.get_draw_row(c)
+            if self.censor is not None:
+                draw_txt = self.censor(draw_txt)
+            img = self.fnt.render(draw_txt, True, self.colors[0])
+            rtn[c] = surf.blit(img, (self.pos[0], self.pos[1] + self.line_h * c))
+        if self.cursor_state:
+            c = self.ch_pos[1]
+            draw_txt = self.txt.get_draw_row(c)
+            if self.censor is not None:
+                draw_txt = self.censor(draw_txt)
             CursPos = (
-                self.Fnt.size(DrawTxt[:self.ChPos[0]])[0] + self.Pos[0] - 1,
-                self.Pos[1] + self.LineH * self.ChPos[1])
-            Rtn.append(Surf.fill(self.Colors[0], pygame.Rect(CursPos, (2, self.LineH))))
-        self.PrevRect = Rtn[-1].unionall(Rtn[:-1])
-        return [self.PrevRect]
-    """def Draw(self, Surf):
-        DrawTxt = u"".join(self.Txt)
-        Img = self.Fnt.render(DrawTxt, True, self.Colors[0])
-        Rtn = []
-        if len(self.Colors) > 1: Rtn.append(Surf.fill(self.Colors[1], self.CollRect))
-        Rtn.append(Surf.blit(Img, self.Pos))
-        if self.CursorSt:
-            CursX = self.Fnt.size(DrawTxt[:self.ChPos])[0] + self.Pos[0] - 1
-            Rtn.append(Surf.fill(self.Colors[0], pygame.Rect(CursX, self.Pos[1], 2, Img.get_height())))
-        self.PrevRect = Rtn[-1].unionall(Rtn[:-1])
-        return Rtn"""
-    def PreDraw(self, Surf):
-        if self.PrevRect is not None:
-            Rtn = Surf.fill(PygCtl.BKGR, self.PrevRect)
-            self.PrevRect = None
-            return [Rtn]
+                self.fnt.size(draw_txt[:self.ch_pos[0]])[0] + self.pos[0] - 1,
+                self.pos[1] + self.line_h * self.ch_pos[1])
+            rtn.append(surf.fill(self.colors[0], pygame.Rect(CursPos, (2, self.line_h))))
+        self.prev_rect = rtn[-1].unionall(rtn[:-1])
+        return [self.prev_rect]
+
+    """def draw(self, app):
+        draw_txt = u"".join(self.txt)
+        img = self.fnt.render(draw_txt, True, self.colors[0])
+        rtn = []
+        if len(self.colors) > 1:
+        rtn.append(surf.fill(self.colors[1], self.coll_rect))
+        rtn.append(surf.blit(img, self.pos))
+        if self.cursor_state:
+            cursor_x = self.fnt.size(draw_txt[:self.ch_pos])[0] + self.pos[0] - 1
+            rtn.append(surf.fill(self.colors[0], pygame.Rect(cursor_x, self.pos[1], 2, img.get_height())))
+        self.prev_rect = rtn[-1].unionall(rtn[:-1])
+        return rtn"""
+
+    def pre_draw(self, app):
+        if self.prev_rect is not None:
+            rtn = surf.fill(PygCtl.BKGR, self.prev_rect)
+            self.prev_rect = None
+            return [rtn]
         return []
-    def CollidePt(self, Pt):
-        return self.CollRect.collidepoint(Pt)
+
+    def collide_pt(self, pt):
+        return self.coll_rect.collidepoint(pt)
+
+
 class Drawable(object):
-    def Draw(self, Surf, Pos):
+    def draw(self, surf, pos):
         return []
-    def GetSize(self):
-        return (0,0)
-    def Rotate(self, IsClkWise):
+
+    def get_size(self):
+        return 0, 0
+
+    def rotate(self, is_clk_wise):
         pass
+
+
 class YGradient(Drawable):
-    def __init__(self, Size, StartColor, EndColor):
-        self.Size = Size
-        self.GradDir = True #False: up, True: down
-        self.LstGrad = [0] * self.Size[1]
-        InitGrad(self.LstGrad, StartColor, EndColor)
-        self.Img = pygame.Surface(self.Size)
-        for y in xrange(self.Size[1]):
-            self.Img.fill(self.LstGrad[y], pygame.rect.Rect((0, y), (self.Size[0], 1)))
-    def Draw(self, Surf, Pos):
-        return [Surf.blit(self.Img, Pos)]
-    def GetSize(self):
-        return self.Img.get_size()
-    def Rotate(self, IsClkWise):
-        Angle = 90
-        if IsClkWise: Angle = -Angle
-        self.Img = pygame.transform.rotate(self.Img, Angle)
-    def SetGradDir(self, Down = True):
-        if self.GradDir != Down:
-            if Down:
-                for y in xrange(self.Size[1]):
-                    self.Img.fill(self.LstGrad[y], pygame.rect.Rect((0, y), (self.Size[0], 1)))
+    def __init__(self, size, start_color, end_color):
+        self.size = size
+        self.grad_dir = True  # False: up, True: down
+        self.lst_grad = [0] * self.size[1]
+        init_gradient(self.lst_grad, start_color, end_color)
+        self.img = pygame.Surface(self.size)
+        for y in range(self.size[1]):
+            self.img.fill(self.lst_grad[y], pygame.rect.Rect((0, y), (self.size[0], 1)))
+
+    def draw(self, surf, pos):
+        return [surf.blit(self.img, pos)]
+
+    def get_size(self):
+        return self.img.get_size()
+
+    def rotate(self, is_clk_wise):
+        angle = 90
+        if is_clk_wise:
+            angle = -angle
+        self.img = pygame.transform.rotate(self.img, angle)
+
+    def set_grad_dir(self, down=True):
+        if self.grad_dir != down:
+            if down:
+                for y in range(self.size[1]):
+                    self.img.fill(self.lst_grad[y], pygame.rect.Rect((0, y), (self.size[0], 1)))
             else:
-                for y in xrange(1, self.Size[1] + 1):
-                    self.Img.fill(self.LstGrad[-y], pygame.rect.Rect((0, y), (self.Size[0], 1)))
-            self.GradDir = Down
-DefGradBtn = {"n-from": (0xF7, 0xF7, 0xF7), "n-to": (0xDC, 0xDC, 0xDC), "border": (1, (0x99, 0x99, 0x99), (0x77, 0x77, 0x77)), "txt-color": (0,0,0)}
-MyGradBtn = dict(DefGradBtn)
-#MyGradBtn["n-from"] = Combine(DefGradBtn["n-from"], (0, 0, 255), .23)
-#MyGradBtn["n-to"] = Combine(DefGradBtn["n-to"], (0, 255, 0), .23)
-#MyGradBtn["border"] = DefGradBtn["border"][0:1] + (MulColor(0, 255, 255), 9/15.0), MulColor((0, 255, 255), 7/15.0))
-MyGradBtn["border"] = DefGradBtn["border"][0:1] + ((128, 0, 0), (255, 0, 0))
+                for y in range(1, self.size[1] + 1):
+                    self.img.fill(self.lst_grad[-y], pygame.rect.Rect((0, y), (self.size[0], 1)))
+            self.grad_dir = down
+
+
+def_grad_btn = {"n-from": (0xF7, 0xF7, 0xF7), "n-to": (0xDC, 0xDC, 0xDC),
+                "border": (1, (0x99, 0x99, 0x99), (0x77, 0x77, 0x77)), "txt-color": (0, 0, 0)}
+my_grad_btn = dict(def_grad_btn)
+# my_grad_btn["n-from"] = combine(def_grad_btn["n-from"], (0, 0, 255), .23)
+# my_grad_btn["n-to"] = combine(def_grad_btn["n-to"], (0, 255, 0), .23)
+# my_grad_btn["border"] = def_grad_btn["border"][0:1] + (mul_color(0, 255, 255), 9/15.0), mul_color((0, 255, 255), 7/15.0))
+my_grad_btn["border"] = def_grad_btn["border"][0:1] + ((128, 0, 0), (255, 0, 0))
+
+
 class GradBtn(PygCtl.PressBtn):
-    def __init__(self, Lbl, ActFunc, Pos, Fnt, Padding = None, Colors = DefGradBtn):
-        self.Pos = Pos
-        self.ActFunc = ActFunc
-        if Padding is None: Padding = (2, 2)
-        self.BoxSz = Colors["border"][0]
-        self.BoxColor = Colors["border"][1]
-        self.BoxColors = Colors["border"][1:3]
-        self.TxtColor = Colors["txt-color"]
-        self.Padding = Padding
-        self.Lbl = Lbl
-        self.Fnt = Fnt
-        self.CurSt = False
-        self.TotRect = None
+    def __init__(self, lbl, act_func, pos, fnt, padding=None, colors=def_grad_btn):
+        self.pos = pos
+        self.act_func = act_func
+        if padding is None:
+            padding = (2, 2)
+        self.box_size = colors["border"][0]
+        self.box_color = colors["border"][1]
+        self.box_colors = colors["border"][1:3]
+        self.txt_color = colors["txt-color"]
+        self.padding = padding
+        self.lbl = lbl
+        self.fnt = fnt
+        self.cur_state = False
+        self.tot_rect = None
         self.RecalcRect()
-        self.DrawObj = YGradient(self.Size, Colors["n-from"], Colors["n-to"])
-        #self.BrdRect = pygame.rect.Rect(self.Pos[0] + self.BoxSz, self.Pos[1] + self.BoxSz, self.Size[0] - self.BoxSz, self.Size[1] - self.BoxSz)
-        self.BrdRect = self.TotRect
-    def OnMouseEnter(self):
-        if not self.CurSt: self.BoxColor = self.BoxColors[1]
+        self.draw_obj = YGradient(self.size, colors["n-from"], colors["n-to"])
+        # self.BrdRect = pygame.rect.Rect(self.pos[0] + self.box_size, self.pos[1] + self.box_size, self.size[0] - self.box_size, self.size[1] - self.box_size)
+        self.BrdRect = self.tot_rect
+
+    def on_mouse_enter(self):
+        if not self.cur_state:
+            self.box_color = self.box_colors[1]
         return True
-    def OnMouseExit(self):
-        self.BoxColor = self.BoxColors[0]
+
+    def on_mouse_exit(self):
+        self.box_color = self.box_colors[0]
         return True
-    def OnMDown(self, Evt):
-        if Evt.button != 1: return False
-        self.CurSt = True
-        self.DrawObj.SetGradDir(False)
-        self.BoxColor = self.BoxColors[0]
+
+    def on_mouse_down(self, evt):
+        if evt.button != 1:
+            return False
+        self.cur_state = True
+        self.draw_obj.set_grad_dir(False)
+        self.box_color = self.box_colors[0]
         return True
-    def OnMUp(self, Evt):
-        if Evt.button != 1: return False
-        if not self.CurSt: return False
-        self.CurSt = False
-        self.BoxColor = self.BoxColors[1]
-        self.DrawObj.SetGradDir(True)
-        if self.ActFunc is not None: self.ActFunc(self, Evt.pos)
+
+    def on_mouse_up(self, evt):
+        if evt.button != 1:
+            return False
+        if not self.cur_state:
+            return False
+        self.cur_state = False
+        self.box_color = self.box_colors[1]
+        self.draw_obj.set_grad_dir(True)
+        if self.act_func is not None:
+            self.act_func(self, evt.pos)
         return True
-    def OnEvtGlobal(self, Evt):
-        if self.CurSt and Evt.type == pygame.MOUSEBUTTONUP and Evt.button == 1:
-            self.CurSt = False
-            self.DrawObj.SetGradDir(True)
+
+    def on_evt_global(self, app, evt):
+        if self.cur_state and evt.type == pygame.MOUSEBUTTONUP and evt.button == 1:
+            self.cur_state = False
+            self.draw_obj.set_grad_dir(True)
             return True
         return False
-    def Draw(self, Surf):
-        Rtn = []
-        Rtn.extend(self.DrawObj.Draw(Surf, self.Pos))
-        Rtn.append(pygame.draw.rect(Surf, self.BoxColor, self.BrdRect, self.BoxSz))
-        Rtn.append(Surf.blit(self.TxtImg, (self.Pos[0] + self.TxtOff[0], self.Pos[1] + self.TxtOff[1])))
-        self.PrevRect = self.TotRect
-        return Rtn
+
+    def draw(self, app):
+        rtn = []
+        rtn.extend(self.draw_obj.draw(surf, self.pos))
+        rtn.append(pygame.draw.rect(surf, self.box_color, self.BrdRect, self.box_size))
+        rtn.append(surf.blit(self.txt_img, (self.pos[0] + self.txt_off[0], self.pos[1] + self.txt_off[1])))
+        self.prev_rect = self.tot_rect
+        return rtn
+
     def RecalcRect(self):
-        TxtSz = self.Fnt.size(self.Lbl)
-        Padding = self.Padding[0] + self.BoxSz + 1, self.Padding[1] + self.BoxSz + 1
-        Size = TxtSz[0] + Padding[0] * 2, TxtSz[1] + Padding[1] * 2
-        self.TxtOff = (Size[0] - TxtSz[0]) / 2, (Size[1] - TxtSz[1]) / 2
-        self.Size = Size
-        self.TxtImg = self.Fnt.render(self.Lbl, 1, self.TxtColor)
-        self.PrevRect = self.TotRect
-        self.TotRect = pygame.rect.Rect(self.Pos, self.Size)
-        
+        txt_size = self.fnt.size(self.lbl)
+        padding = self.padding[0] + self.box_size + 1, self.padding[1] + self.box_size + 1
+        size = txt_size[0] + padding[0] * 2, txt_size[1] + padding[1] * 2
+        self.txt_off = (size[0] - txt_size[0]) / 2, (size[1] - txt_size[1]) / 2
+        self.size = size
+        self.txt_img = self.fnt.render(self.lbl, 1, self.txt_color)
+        self.prev_rect = self.tot_rect
+        self.tot_rect = pygame.rect.Rect(self.pos, self.size)
+
+
 def Main():
     PygCtl.Init()
-    MyFnt = pygame.font.SysFont("Courier New", 20)
+    my_fnt = pygame.font.SysFont("Courier New", 20)
     MyLst = [
-        LblElem("hello", MyFnt),
-        LblElem("Not Really", MyFnt),
-        LblElem("Of Course", MyFnt),
-        LblElem("But Maybe", MyFnt),
-        LblElem("Who Are You?", MyFnt),
-        LblElem("This is a Text", MyFnt),
-        LblElem("There are no", MyFnt),
-        LblElem("swear words", MyFnt),
-        LblElem("in this Test", MyFnt)]
-    PygCtl.LstCtl.extend(MyLst)
-    PygCtl.LstCtl.append(HyperScroll(MyLst, 6, (200, 100), MyFnt.size("h")[1]+ 8))
-    PygCtl.LstCtl[-1].Animate()
+        LblElem("hello", my_fnt),
+        LblElem("Not Really", my_fnt),
+        LblElem("Of Course", my_fnt),
+        LblElem("But Maybe", my_fnt),
+        LblElem("Who Are You?", my_fnt),
+        LblElem("This is a Text", my_fnt),
+        LblElem("There are no", my_fnt),
+        LblElem("swear words", my_fnt),
+        LblElem("in this Test", my_fnt)]
+    PygCtl.ctls.extend(MyLst)
+    PygCtl.ctls.append(HyperScroll(MyLst, 6, (200, 100), my_fnt.size("h")[1] + 8))
+    PygCtl.ctls[-1].animate()
     PygCtl.RunCtls()
-    PygCtl.LstCtl = list()
+    PygCtl.ctls = list()
     pygame.quit()
-def FindLstWord(Txt, Lst, *args):
-    Rtn = -1
+
+
+def FindLstWord(txt, Lst, *args):
+    rtn = -1
     CurLen = 0
     for Word in Lst:
-        Pos = Txt.find(Word, *args)
-        if Pos != -1:
-            if Pos < Rtn or Rtn == -1:
+        pos = txt.find(Word, *args)
+        if pos != -1:
+            if pos < rtn or rtn == -1:
                 CurLen = len(Word)
-                Rtn = Pos
-    return (Rtn, CurLen)
+                rtn = pos
+    return (rtn, CurLen)
+
+
 def Main1():
-    PygCtl.BKGR = (192,192,192)
+    PygCtl.BKGR = (192, 192, 192)
     PygCtl.Init()
-    DctShared = {"Done": False}
+    dct_shared = {"Done": False}
     BanWords = ["ban", "bomb", "weird", "stupid"]
-    def OnPreChg(Ln, Evt):
+
+    def on_pre_chg(Ln, evt):
         return True
-    def OnPostChg(Ln, Evt):
-        Txt = u"".join(Ln.Txt).lower()
+
+    def on_post_chg(Ln, evt):
+        txt = u"".join(Ln.txt).lower()
         for Word in BanWords:
-            if Word in Txt:
-                print "found banned word: " + Word
+            if Word in txt:
+                print("found banned word: " + Word)
+
     def OnEnter(Ln):
-        DctShared["Done"] = True
-    def OnCensor(DrawTxt):
-        LowTxt = DrawTxt.lower()
-        Pos, Len = FindLstWord(LowTxt, BanWords)
-        while Pos != -1:
-            DrawTxt = DrawTxt[:Pos] + u"\u2022" * Len + DrawTxt[Pos+Len:]
-            Pos, Len = FindLstWord(LowTxt, BanWords, Pos + 1)
-        return DrawTxt
-    IsDone = lambda: not DctShared["Done"]
-    FntName = "Courier New"
-    if pygame.font.match_font(FntName) is None: FntName = "liberation sans"
-    MyFnt = pygame.font.SysFont(FntName, 16)
-    MyLine = EntryLine(
-        MyFnt, (25, 25), (200, MyFnt.size("M")[1] + 4),
-        ((0, 0, 0),(128,192,192)), OnPreChg, OnPostChg, OnEnter,
-        "BOMB you", OnCensor)
-    PygCtl.LstCtl = [MyLine]
-    pygame.key.set_repeat(250, 1000/30)
-    EntryLine.InitTimer()
-    PygCtl.RunCtls(IsDone)
+        dct_shared["Done"] = True
+
+    def on_censor(draw_txt):
+        low_txt = draw_txt.lower()
+        pos, length = FindLstWord(low_txt, BanWords)
+        while pos != -1:
+            draw_txt = draw_txt[:pos] + u"\u2022" * length + draw_txt[pos + length:]
+            pos, length = FindLstWord(low_txt, BanWords, pos + 1)
+        return draw_txt
+
+    is_done = lambda: not dct_shared["Done"]
+    fnt_name = "Courier New"
+    if pygame.font.match_font(fnt_name) is None:
+        fnt_name = "liberation sans"
+    my_fnt = pygame.font.SysFont(fnt_name, 16)
+    my_line = EntryLine(
+        my_fnt, (25, 25), (200, my_fnt.size("M")[1] + 4),
+        ((0, 0, 0), (128, 192, 192)), on_pre_chg, on_post_chg, OnEnter,
+        "BOMB you", on_censor)
+    PygCtl.ctls = [my_line]
+    pygame.key.set_repeat(250, 1000 / 30)
+    EntryLine.init_timer()
+    PygCtl.RunCtls(is_done)
     pygame.quit()
-def PrnFunc(Btn, Pos):
-    print "hello: " + str(Pos)
+
+
+def prn_func(Btn, pos):
+    print("hello: " + str(pos))
+
+
 def Main2():
     PygCtl.Init()
     PygCtl.BKGR = (0xD0, 0xD0, 0xD0)
-    FntName = "Arial"
-    if pygame.font.match_font(FntName) is None: FntName = "liberation sans"
-    MyFnt = pygame.font.SysFont(FntName, 12)
-    PygCtl.LstCtl.append(GradBtn("hello there", PrnFunc, (10, 10), MyFnt, (6, 2)))
-    PygCtl.LstCtl.append(GradBtn("hello there", PrnFunc, (10, 35), MyFnt, (6, 2), MyGradBtn))
-    PygCtl.RunCtls()
-    PygCtl.LstCtl = list()
+    fnt_name = "Arial"
+    if pygame.font.match_font(fnt_name) is None:
+        fnt_name = "liberation sans"
+    my_fnt = pygame.font.SysFont(fnt_name, 12)
+    PygCtl.ctls.append(GradBtn("hello there", prn_func, (10, 10), my_fnt, (6, 2)))
+    PygCtl.ctls.append(GradBtn("hello there", prn_func, (10, 35), my_fnt, (6, 2), my_grad_btn))
+    PygCtl.run_ctls()
+    PygCtl.ctls = list()
     pygame.quit()
+
+
 def Main3():
-    PygCtl.BKGR = (192,192,192)
+    PygCtl.BKGR = (192, 192, 192)
     PygCtl.Init()
-    DctShared = {"Done": False}
+    dct_shared = {"Done": False}
     BanWords = ["ban", "bomb", "weird", "stupid"]
-    def OnPreChg(Ln, Evt):
+
+    def on_pre_chg(Ln, evt):
         return True
-    def OnPostChg(Ln, Evt):
-        Txt = u"".join(Ln.Txt.Str).lower()
+
+    def on_post_chg(Ln, evt):
+        txt = u"".join(Ln.txt.Str).lower()
         for Word in BanWords:
-            if Word in Txt:
-                print "found banned word: " + Word
-        if "clipboard" in Txt: print pygame.scrap.get_types()
+            if Word in txt:
+                print("found banned word: " + Word)
+        if "clipboard" in txt: print(pygame.scrap.get_types())
+
     def OnEnter(Ln):
-        DctShared["Done"] = True
-    def OnCensor(DrawTxt):
-        LowTxt = DrawTxt.lower()
-        Pos, Len = FindLstWord(LowTxt, BanWords)
-        while Pos != -1:
-            DrawTxt = DrawTxt[:Pos] + u"\u2022" * Len + DrawTxt[Pos+Len:]
-            Pos, Len = FindLstWord(LowTxt, BanWords, Pos + 1)
-        return DrawTxt
-    IsDone = lambda: not DctShared["Done"]
-    FntName = "Arial"
-    if pygame.font.match_font(FntName) is None: FntName = "liberation sans"
-    MyFnt = pygame.font.SysFont(FntName, 16)
-    MyLine = EntryBox(
-        MyFnt, (25, 25), (200, MyFnt.get_linesize()*10 + 4),
-        ((0, 0, 0),(255,255,255)), OnPreChg, OnPostChg, OnEnter,
-        "BOMB you", OnCensor)
-    PygCtl.LstCtl = [MyLine]
-    pygame.key.set_repeat(250, 1000/30)
-    EntryBox.InitTimer()
-    PygCtl.RunCtls(IsDone)
+        dct_shared["Done"] = True
+
+    def on_censor(draw_txt):
+        low_txt = draw_txt.lower()
+        pos, length = FindLstWord(low_txt, BanWords)
+        while pos != -1:
+            draw_txt = draw_txt[:pos] + u"\u2022" * length + draw_txt[pos + length:]
+            pos, length = FindLstWord(low_txt, BanWords, pos + 1)
+        return draw_txt
+
+    is_done = lambda: not dct_shared["Done"]
+    fnt_name = "Arial"
+    if pygame.font.match_font(fnt_name) is None:
+        fnt_name = "liberation sans"
+    my_fnt = pygame.font.SysFont(fnt_name, 16)
+    my_line = EntryBox(
+        my_fnt, (25, 25), (200, my_fnt.get_linesize() * 10 + 4),
+        ((0, 0, 0), (255, 255, 255)), on_pre_chg, on_post_chg, OnEnter,
+        "BOMB you", on_censor)
+    PygCtl.ctls = [my_line]
+    pygame.key.set_repeat(250, 1000 / 30)
+    EntryBox.init_timer()
+    PygCtl.run_ctls(is_done)
     pygame.quit()
+
+
 class ErrLabel(PygCtl.Label):
-    def OnEvtGlobal(self, Evt):
-        if Evt.type == pygame.MOUSEBUTTONDOWN:
+    def on_evt_global(self, app, evt):
+        if evt.type == pygame.MOUSEBUTTONDOWN:
             try:
-                PygCtl.LstCtl.remove(self)
+                PygCtl.ctls.remove(self)
             except ValueError:
                 pass
             return True
-        super(ErrLabel, self).OnEvtGlobal(Evt)
+        super(ErrLabel, self).on_evt_global(evt)
+
+
 def Main4():
     PygCtl.BKGR = (192, 192, 192)
     PygCtl.Init()
-    FntName = "Arial"
-    if pygame.font.match_font(FntName) is None: FntName = "liberation sans"
-    MyFnt = pygame.font.SysFont(FntName, 16)
+    fnt_name = "Arial"
+    if pygame.font.match_font(fnt_name) is None:
+        fnt_name = "liberation sans"
+    my_fnt = pygame.font.SysFont(fnt_name, 16)
     MyFnt1 = pygame.font.SysFont("Courier New", 16)
     MyBox = EntryBox(
         MyFnt1, (20, 76), (600, MyFnt1.get_linesize() * 20 + 4),
         ((0, 0, 0), (255, 255, 255)))
-    MyLine = EntryLine(
+    my_line = EntryLine(
         MyFnt1, (190, 25), (400, MyFnt1.get_linesize() + 4),
         ((0, 0, 0), (128, 192, 192)))
-    def Load(Btn, Pos):
-        fName = u"".join(MyLine.Txt)
+
+    def load(Btn, pos):
+        fName = u"".join(my_line.txt)
         try:
             with open(fName, "rb") as Fl:
-                MyBox.Txt.SetStr(Fl.read().decode("utf-8"), "\n")
+                MyBox.txt.SetStr(Fl.read().decode("utf-8"), "\n")
         except IOError as Exc:
-            PygCtl.LstCtl.append(ErrLabel(str(Exc), (20,52), MyFnt1, (PygCtl.BKGR, PygCtl.RED)))
-            PygCtl.SetRedraw(PygCtl.LstCtl[-1])
+            PygCtl.ctls.append(ErrLabel(str(Exc), (20, 52), MyFnt1, (PygCtl.BKGR, PygCtl.RED)))
+            PygCtl.set_redraw(PygCtl.ctls[-1])
             return
         except UnicodeDecodeError as Exc:
-            PygCtl.LstCtl.append(ErrLabel(str(Exc), (20,52), MyFnt1, (PygCtl.BKGR, PygCtl.RED)))
-            PygCtl.SetRedraw(PygCtl.LstCtl[-1])
+            PygCtl.ctls.append(ErrLabel(str(Exc), (20, 52), MyFnt1, (PygCtl.BKGR, PygCtl.RED)))
+            PygCtl.set_redraw(PygCtl.ctls[-1])
             return
-        MyBox.ChPos = [0,0]
-        MyBox.HiLtPos = [0,0]
-        PygCtl.SetRedraw(MyBox)
-    def Save(Btn, Pos):
-        fName = u"".join(MyLine.Txt)
+        MyBox.ch_pos = [0, 0]
+        MyBox.highlight_pos = [0, 0]
+        PygCtl.set_redraw(MyBox)
+
+    def Save(Btn, pos):
+        fName = u"".join(my_line.txt)
         with open(fName, "wb") as Fl:
-            Fl.write(MyBox.Txt.GetStr(0, len(MyBox.Txt.Str)).encode("utf-8"))
-    def OnResize(Evt):
-        MyBox.SetSize((Evt.size[0] - 40, MyBox.LineH*((Evt.size[1]-104)//MyBox.LineH)+4))
+            Fl.write(MyBox.txt.GetStr(0, len(MyBox.txt.Str)).encode("utf-8"))
+
+    def OnResize(evt):
+        MyBox.set_size((evt.size[0] - 40, MyBox.line_h * ((evt.size[1] - 104) // MyBox.line_h) + 4))
+
     PygCtl.DctEvtFunc[pygame.VIDEORESIZE] = OnResize
-    LoadBtn = GradBtn("Load File", Load, (10, 25), MyFnt, (6, 2))
-    SaveBtn = GradBtn("Save File", Save, (100, 25), MyFnt, (6, 2))
-    PygCtl.LstCtl = [LoadBtn, SaveBtn, MyBox, MyLine]
+    LoadBtn = GradBtn("load File", load, (10, 25), my_fnt, (6, 2))
+    SaveBtn = GradBtn("Save File", Save, (100, 25), my_fnt, (6, 2))
+    PygCtl.ctls = [LoadBtn, SaveBtn, MyBox, my_line]
     pygame.key.set_repeat(250, 1000 / 30)
-    EntryBox.InitTimer()
-    EntryLine.InitTimer()
-    PygCtl.RunCtls()
+    EntryBox.init_timer()
+    EntryLine.init_timer()
+    PygCtl.run_ctls()
     pygame.quit()
+
 
 if __name__ == "__main__": Main4()
